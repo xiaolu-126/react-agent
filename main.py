@@ -13,6 +13,10 @@ from functools import wraps
 import click
 from dotenv import load_dotenv
 
+# 导入项目模块
+from src.agent.react_agent import ReActAgent
+from src.utils.config import get_config
+
 
 class ColorFormatter:
     """彩色输出格式化器"""
@@ -93,6 +97,17 @@ def ensure_config():
         click.echo(ColorFormatter.warning("未找到 .env.example 文件，请手动创建配置文件"))
 
 
+# 全局 Agent 实例
+_agent: Optional[ReActAgent] = None
+
+def get_agent() -> ReActAgent:
+    """获取或初始化 Agent 实例"""
+    global _agent
+    if _agent is None:
+        get_config()
+        _agent = ReActAgent()
+    return _agent
+
 @click.group()
 @click.version_option(version="0.1.0")
 def cli():
@@ -102,6 +117,7 @@ def cli():
     提供交互式聊天、文档管理和模型切换等功能。
     """
     ensure_config()
+    get_config()
 
 
 @cli.command()
@@ -115,10 +131,9 @@ def chat():
     print_header("交互式聊天模式")
     click.echo(ColorFormatter.info("输入 'quit' 或 'exit' 退出，'clear' 清空对话历史\n"))
     
-    click.echo(ColorFormatter.success("Agent 已就绪，当前模型: openai"))
+    agent = get_agent()
+    click.echo(ColorFormatter.success("Agent 已就绪！"))
     click.echo(ColorFormatter.info("有什么可以帮助您的吗？\n"))
-    
-    conversation_history = []
     
     while True:
         try:
@@ -132,23 +147,25 @@ def chat():
             break
         
         if user_input.lower() == 'clear':
-            conversation_history = []
+            agent.clear_memory()
             click.echo(ColorFormatter.success("对话历史已清空"))
             continue
         
         if not user_input.strip():
             continue
         
-        conversation_history.append({"role": "user", "content": user_input})
-        
         click.echo()
         click.echo(ColorFormatter.bold("> Agent") + ": ", nl=False)
         
-        # 模拟响应
-        response = f"您说的是：{user_input}\n\n这是一个演示响应。在配置了 API 密钥后，这里将显示真实的 AI 回复。"
-        click.echo(response)
-        conversation_history.append({"role": "assistant", "content": response})
-        click.echo()
+        # 调用 Agent 流式响应
+        try:
+            for chunk in agent.stream(user_input):
+                click.echo(chunk, nl=False)
+            click.echo("\n")
+        except Exception as e:
+            click.echo(ColorFormatter.error(f"\n出错了: {str(e)}"))
+            click.echo(ColorFormatter.info("请确保已在 .env 文件中配置了正确的 API 密钥"))
+            click.echo()
 
 
 @cli.command()
@@ -171,24 +188,28 @@ def generate(streamer_name: str, preferences: Optional[str], stream: bool):
         click.echo(ColorFormatter.info(f"用户偏好: {preferences}"))
     click.echo()
     
+    agent = get_agent()
+    
+    # 构建用户输入
+    user_input = f"请给我推荐主播：{streamer_name}"
+    if preferences:
+        user_input += f"\n用户偏好：{preferences}"
+    
     click.echo(ColorFormatter.bold("> Agent 推荐理由") + ":\n")
     
-    # 模拟响应
-    response = f"## 主播推荐：{streamer_name}\n\n"
-    response += "### 主播特点\n"
-    response += "- 直播风格独特，互动性强\n"
-    response += "- 内容丰富有趣，吸引大量粉丝\n"
-    response += "- 专业领域知识丰富\n\n"
-    response += "### 推荐理由\n"
-    response += "1. 该主播具有很强的个人魅力和直播特色\n"
-    response += "2. 能够持续产出高质量的内容\n"
-    response += "3. 与粉丝的互动非常活跃\n\n"
-    if preferences:
-        response += f"### 匹配您的偏好：{preferences}\n"
-        response += "- 直播内容与您的兴趣高度契合\n"
-        response += "- 主播风格符合您的期望\n"
-    
-    click.echo(response)
+    try:
+        if stream:
+            # 流式输出
+            for chunk in agent.stream(user_input, streamer_name=streamer_name, user_preferences=preferences):
+                click.echo(chunk, nl=False)
+            click.echo()
+        else:
+            # 非流式输出
+            response = agent.run(user_input, streamer_name=streamer_name, user_preferences=preferences)
+            click.echo(response)
+    except Exception as e:
+        click.echo(ColorFormatter.error(f"\n出错了: {str(e)}"))
+        click.echo(ColorFormatter.info("请确保已在 .env 文件中配置了正确的 API 密钥"))
     click.echo()
 
 
@@ -205,6 +226,9 @@ def upload_docs(path: str, recursive: bool, metadata: List[str]):
 
     PATH: 文件或目录路径
     """
+    from src.tools.knowledge_base import KnowledgeBase
+    from src.tools.document_loader import load_documents
+    
     print_header("上传文档到知识库")
     
     path_obj = Path(path)
@@ -216,14 +240,39 @@ def upload_docs(path: str, recursive: bool, metadata: List[str]):
             key, value = item.split('=', 1)
             meta_dict[key.strip()] = value.strip()
     
+    # 初始化知识库
+    kb = KnowledgeBase()
+    
     if path_obj.is_file():
         click.echo(ColorFormatter.info(f"上传文件: {path}"))
-        click.echo(ColorFormatter.success("✓ 文件已成功添加到知识库"))
+        docs = load_documents(str(path_obj))
+        kb.add_documents(docs, metadata=meta_dict)
+        click.echo(ColorFormatter.success(f"✓ 文件已成功添加到知识库，共 {len(docs)} 个文档片段"))
     elif path_obj.is_dir():
         click.echo(ColorFormatter.info(f"上传目录: {path}"))
         if recursive:
             click.echo(ColorFormatter.info("模式: 递归遍历"))
-        click.echo(ColorFormatter.success("✓ 目录中的文件已成功添加到知识库"))
+        
+        all_docs = []
+        file_patterns = ["*.pdf", "*.txt", "*.md"]
+        for pattern in file_patterns:
+            if recursive:
+                files = list(path_obj.rglob(pattern))
+            else:
+                files = list(path_obj.glob(pattern))
+            
+            for file_path in files:
+                try:
+                    docs = load_documents(str(file_path))
+                    all_docs.extend(docs)
+                except Exception as e:
+                    click.echo(ColorFormatter.warning(f"  跳过文件 {file_path}: {str(e)}"))
+        
+        if all_docs:
+            kb.add_documents(all_docs, metadata=meta_dict)
+            click.echo(ColorFormatter.success(f"✓ 目录中的文件已成功添加到知识库，共 {len(all_docs)} 个文档片段"))
+        else:
+            click.echo(ColorFormatter.warning("未找到可处理的文件"))
     
     if meta_dict:
         click.echo(ColorFormatter.info(f"\n附加元数据: {meta_dict}"))
@@ -239,17 +288,24 @@ def list_models():
 
     显示已配置的所有模型类型及其状态。
     """
+    from src.models.model_manager import ModelManager
+    
     print_header("可用模型列表")
     
-    models = [
-        ("openai", "GPT-4 / GPT-3.5", True),
-        ("anthropic", "Claude 3", False),
-        ("dashscope", "通义千问", False),
-        ("qianfan", "文心一言", False),
-    ]
+    manager = ModelManager()
+    available_models = manager.get_available_models()
+    current_model = manager.current_model_type
     
-    for model_id, model_name, is_current in models:
-        if is_current:
+    model_names = {
+        "openai": "GPT-4 / GPT-3.5",
+        "anthropic": "Claude 3",
+        "dashscope": "通义千问",
+        "qianfan": "文心一言",
+    }
+    
+    for model_id in available_models:
+        model_name = model_names.get(model_id, model_id)
+        if model_id == current_model:
             click.echo(ColorFormatter.success(f"  • {model_id} - {model_name} [当前使用]"))
         else:
             click.echo(ColorFormatter.info(f"  - {model_id} - {model_name}"))
@@ -269,6 +325,9 @@ def switch_model(model_type: str):
     """
     print_header("切换模型")
     
+    agent = get_agent()
+    agent.switch_model(model_type.lower())
+    
     click.echo(ColorFormatter.success(f"✓ 已切换到模型: {model_type.lower()}"))
     click.echo(ColorFormatter.info("注意：请确保已在配置文件中设置了对应模型的 API 密钥"))
 
@@ -281,6 +340,8 @@ def status():
 
     显示配置、模型和知识库等信息。
     """
+    from src.models.model_manager import ModelManager
+    
     print_header("系统状态")
     
     config_dir = Path("config")
@@ -294,12 +355,13 @@ def status():
     
     click.echo()
     click.echo(ColorFormatter.bold("模型信息:"))
-    click.echo(f"  当前使用: {ColorFormatter.success('openai')}")
-    click.echo(f"  可用模型: openai, anthropic, dashscope, qianfan")
+    manager = ModelManager()
+    click.echo(f"  当前使用: {ColorFormatter.success(manager.current_model_type)}")
+    click.echo(f"  可用模型: {', '.join(manager.get_available_models())}")
     
     click.echo()
     click.echo(ColorFormatter.bold("知识库:"))
-    chroma_dir = Path("chroma_db")
+    chroma_dir = Path("data") / "chroma_db"
     if chroma_dir.exists():
         click.echo(f"  状态: 已初始化")
         click.echo(f"  持久化路径: {chroma_dir.absolute()}")

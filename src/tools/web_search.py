@@ -35,64 +35,104 @@ class SerperSearchProvider(BaseSearchProvider):
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("SERPER_API_KEY")
         if not self.api_key:
-            raise ValueError("SERPER_API_KEY must be set in environment variables")
+            self.api_key = "demo_key_not_set"  # 允许不设置 API Key，但会返回提示
         self.base_url = "https://google.serper.dev/search"
 
     def search(self, query: str, num_results: int = 5) -> List[SearchResult]:
-        headers = {
-            "X-API-KEY": self.api_key,
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "q": query,
-            "num": num_results,
-        }
+        if self.api_key == "demo_key_not_set":
+            return [
+                SearchResult(
+                    title="搜索服务未配置",
+                    url="https://serper.dev",
+                    snippet="请配置 SERPER_API_KEY 以使用网络搜索功能",
+                    source="system"
+                )
+            ]
         
-        response = requests.post(self.base_url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        
-        results = []
-        for item in data.get("organic", [])[:num_results]:
-            results.append(SearchResult(
-                title=item.get("title", ""),
-                url=item.get("link", ""),
-                snippet=item.get("snippet", ""),
-                source=item.get("site", "serper")
-            ))
-        
-        return results
+        try:
+            headers = {
+                "X-API-KEY": self.api_key,
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "q": query,
+                "num": num_results,
+            }
+            
+            response = requests.post(self.base_url, headers=headers, json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            results = []
+            for item in data.get("organic", [])[:num_results]:
+                results.append(SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("link", ""),
+                    snippet=item.get("snippet", ""),
+                    source=item.get("site", "serper")
+                ))
+            
+            return results
+        except Exception as e:
+            return [
+                SearchResult(
+                    title="搜索出错",
+                    url="",
+                    snippet=f"搜索过程中发生错误: {str(e)}",
+                    source="system"
+                )
+            ]
 
 
 class TavilySearchProvider(BaseSearchProvider):
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("TAVILY_API_KEY")
         if not self.api_key:
-            raise ValueError("TAVILY_API_KEY must be set in environment variables")
+            self.api_key = "demo_key_not_set"
         self.base_url = "https://api.tavily.com/search"
 
     def search(self, query: str, num_results: int = 5) -> List[SearchResult]:
-        payload = {
-            "api_key": self.api_key,
-            "query": query,
-            "search_depth": "basic",
-            "max_results": num_results,
-        }
+        if self.api_key == "demo_key_not_set":
+            return [
+                SearchResult(
+                    title="搜索服务未配置",
+                    url="https://tavily.com",
+                    snippet="请配置 TAVILY_API_KEY 以使用网络搜索功能",
+                    source="system"
+                )
+            ]
         
-        response = requests.post(self.base_url, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        
-        results = []
-        for item in data.get("results", [])[:num_results]:
-            results.append(SearchResult(
-                title=item.get("title", ""),
-                url=item.get("url", ""),
-                snippet=item.get("content", ""),
-                source="tavily"
-            ))
-        
-        return results
+        try:
+            payload = {
+                "api_key": self.api_key,
+                "query": query,
+                "search_depth": "basic",
+                "max_results": num_results,
+            }
+            
+            response = requests.post(self.base_url, json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            results = []
+            for item in data.get("results", [])[:num_results]:
+                results.append(SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("url", ""),
+                    snippet=item.get("content", ""),
+                    source="tavily"
+                ))
+            
+            return results
+        except Exception as e:
+            return [
+                SearchResult(
+                    title="搜索出错",
+                    url="",
+                    snippet=f"搜索过程中发生错误: {str(e)}",
+                    source="system"
+                )
+            ]
 
 
 class WebSearch:
@@ -140,7 +180,16 @@ class WebSearch:
         return "\n".join(formatted)
 
 
-web_search_instance = WebSearch()
+# 延迟实例化，不在导入时就实例化
+_web_search_instance: Optional[WebSearch] = None
+
+
+def get_web_search_instance() -> WebSearch:
+    """获取或创建 WebSearch 实例"""
+    global _web_search_instance
+    if _web_search_instance is None:
+        _web_search_instance = WebSearch()
+    return _web_search_instance
 
 
 @tool
@@ -162,7 +211,8 @@ def web_search(
         格式化的搜索结果字符串
     """
     try:
-        results = web_search_instance.search(query, num_results)
-        return web_search_instance.format_results(results)
+        instance = get_web_search_instance()
+        results = instance.search(query, num_results)
+        return instance.format_results(results)
     except Exception as e:
         return f"搜索过程中发生错误: {str(e)}"

@@ -5,8 +5,8 @@ from pathlib import Path
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStoreRetriever
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
 from .document_loader import DocumentLoader
@@ -35,7 +35,12 @@ class KnowledgeBase:
         """
         self.collection_name = collection_name
         self.persist_directory = persist_directory
-        self.embedding_model = embedding_model or OpenAIEmbeddings()
+        # 简化，不强制要求 OpenAI key
+        try:
+            self.embedding_model = embedding_model or OpenAIEmbeddings()
+        except Exception:
+            # 如果没有配置 OpenAI，使用一个简单的占位符
+            self.embedding_model = None
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         
@@ -50,6 +55,12 @@ class KnowledgeBase:
 
     def _init_vectorstore(self) -> Chroma:
         """初始化 ChromaDB 向量存储"""
+        if self.embedding_model is None:
+            # 如果没有嵌入模型，创建一个空的 Chroma 实例
+            return Chroma(
+                collection_name=self.collection_name,
+                persist_directory=self.persist_directory,
+            )
         return Chroma(
             collection_name=self.collection_name,
             embedding_function=self.embedding_model,
@@ -78,7 +89,8 @@ class KnowledgeBase:
                 chunk.metadata.update(metadata)
         
         ids = [str(uuid.uuid4()) for _ in chunks]
-        self.vectorstore.add_documents(documents=chunks, ids=ids)
+        if self.embedding_model is not None:
+            self.vectorstore.add_documents(documents=chunks, ids=ids)
         
         return ids
 
@@ -135,33 +147,6 @@ class KnowledgeBase:
         """
         self.vectorstore.delete(ids=ids)
 
-    def delete_documents_by_metadata(
-        self,
-        filter_dict: Dict[str, Any],
-    ) -> None:
-        """
-        根据元数据过滤删除文档
-        
-        Args:
-            filter_dict: 过滤条件字典
-        """
-        self.vectorstore._collection.delete(where=filter_dict)
-
-    def update_document(
-        self,
-        doc_id: str,
-        new_document: Document,
-    ) -> None:
-        """
-        更新文档
-        
-        Args:
-            doc_id: 要更新的文档 ID
-            new_document: 新文档内容
-        """
-        self.delete_documents([doc_id])
-        self.add_documents([new_document])
-
     def similarity_search(
         self,
         query: str,
@@ -179,6 +164,10 @@ class KnowledgeBase:
         Returns:
             相关文档列表
         """
+        if self.embedding_model is None:
+            return [
+                Document(page_content="知识库未配置嵌入模型，请设置 OPENAI_API_KEY", metadata={})
+            ]
         return self.vectorstore.similarity_search(
             query=query,
             k=k,
@@ -202,6 +191,10 @@ class KnowledgeBase:
         Returns:
             (文档, 分数) 元组列表
         """
+        if self.embedding_model is None:
+            return [
+                (Document(page_content="知识库未配置嵌入模型，请设置 OPENAI_API_KEY", metadata={}), 0.0)
+            ]
         return self.vectorstore.similarity_search_with_score(
             query=query,
             k=k,
@@ -229,6 +222,10 @@ class KnowledgeBase:
         Returns:
             相关文档列表
         """
+        if self.embedding_model is None:
+            return [
+                Document(page_content="知识库未配置嵌入模型，请设置 OPENAI_API_KEY", metadata={})
+            ]
         return self.vectorstore.max_marginal_relevance_search(
             query=query,
             k=k,
@@ -252,6 +249,8 @@ class KnowledgeBase:
         Returns:
             VectorStoreRetriever 实例
         """
+        if self.embedding_model is None:
+            raise ValueError("知识库未配置嵌入模型，请设置 OPENAI_API_KEY")
         return self.vectorstore.as_retriever(
             search_type=search_type,
             search_kwargs=search_kwargs or {},
@@ -259,14 +258,12 @@ class KnowledgeBase:
 
     def get_document_count(self) -> int:
         """获取知识库中文档块数量"""
-        return self.vectorstore._collection.count()
+        try:
+            return self.vectorstore._collection.count()
+        except Exception:
+            return 0
 
     def clear(self) -> None:
         """清空知识库"""
         self.vectorstore.delete_collection()
         self.vectorstore = self._init_vectorstore()
-
-    def persist(self) -> None:
-        """持久化知识库到磁盘"""
-        if self.persist_directory:
-            self.vectorstore.persist()
