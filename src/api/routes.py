@@ -1,0 +1,612 @@
+from __future__ import annotations
+
+import json
+import asyncio
+from pathlib import Path
+from typing import AsyncGenerator, Optional
+
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
+
+from src.agent.react_agent import ReActAgent
+from src.agent.system_prompt_manager import SystemPromptManager
+from src.agent.prompt_manager import PromptManager, PromptTemplate
+from src.models.model_manager import ModelManager, ModelType
+from src.tools.knowledge_base import KnowledgeBase
+from . import schemas
+
+router = APIRouter()
+
+
+def _get_agent() -> ReActAgent:
+    """获取全局 Agent 实例"""
+    from src.agent.react_agent import ReActAgent
+    global _agent_instance
+    if "_agent_instance" not in globals() or globals()["_agent_instance"] is None:
+        globals()["_agent_instance"] = ReActAgent()
+    return globals()["_agent_instance"]
+
+
+def _get_system_prompt_manager() -> SystemPromptManager:
+    """获取系统提示词管理器"""
+    return SystemPromptManager()
+
+
+def _get_prompt_manager() -> PromptManager:
+    """获取提示词管理器"""
+    return PromptManager()
+
+
+def _get_knowledge_base() -> KnowledgeBase:
+    """获取知识库实例"""
+    try:
+        from src.utils.config import get_config
+        config = get_config()
+        return KnowledgeBase(
+            collection_name=os.getenv("CHROMA_COLLECTION_NAME", "agent_documents"),
+            persist_directory=config.chroma_db_path,
+        )
+    except Exception:
+        return KnowledgeBase()
+
+
+import os
+
+
+# ==================== 聊天 API ====================
+
+@router.post("/chat", response_model=schemas.ChatResponse, summary="发送聊天消息")
+async def chat(request: schemas.ChatRequest):
+    """发送消息给 Agent，获取回复（非流式）"""
+    try:
+        agent = _get_agent()
+        reply = agent.run(
+            input=request.message,
+            streamer_name=request.streamer_name,
+            user_preferences=request.user_preferences,
+            stream=False,
+        )
+        return schemas.ChatResponse(reply=reply, conversation_id="default")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/stream", summary="流式聊天")
+async def chat_stream(request: schemas.ChatRequest):
+    """发送消息给 Agent，通过 SSE 获取流式回复"""
+    agent = _get_agent()
+
+    async def event_generator() -> AsyncGenerator[dict, None]:
+        try:
+            full_text = ""
+            async for chunk in agent.stream(
+                input=request.message,
+                streamer_name=request.streamer_name,
+                user_preferences=request.user_preferences,
+            ):
+                full_text += chunk
+                yield {"event": "chunk", "data": chunk}
+            yield {"event": "done", "data": full_text}
+        except Exception as e:
+            yield {"event": "error", "data": str(e)}
+
+    return EventSourceResponse(event_generator())
+
+
+# ==================== 生成推荐 API ====================
+
+@router.post("/generate", response_model=schemas.GenerateResponse, summary="生成主播推荐理由")
+async def generate_recommendation(request: schemas.GenerateRequest):
+    """根据主播名称生成推荐理由"""
+    try:
+        prompt_manager = _get_prompt_manager()
+        agent = _get_agent()
+
+        prompt = prompt_manager.format_prompt(
+            "streamer_recommendation",
+            streamer_name=request.streamer_name,
+            streamer_tags=request.tags or "",
+            streamer_content=request.content or "",
+            user_preferences=request.preferences or "",
+        )
+
+        reply = agent.run(
+            input=prompt,
+            streamer_name=request.streamer_name,
+            user_preferences=request.preferences,
+            stream=False,
+        )
+
+        return schemas.GenerateResponse(
+            streamer_name=request.streamer_name,
+            recommendation=reply,
+            sources=[],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate/stream", summary="流式生成主播推荐理由")
+async def generate_recommendation_stream(request: schemas.GenerateRequest):
+    """根据主播名称流式生成推荐理由"""
+    agent = _get_agent()
+
+    async def event_generator() -> AsyncGenerator[dict, None]:
+        try:
+            full_text = ""
+            async for chunk in agent.stream(
+                input=f"请推荐主播 {request.streamer_name}",
+                streamer_name=request.streamer_name,
+                user_preferences=request.preferences,
+            ):
+                full_text += chunk
+                yield {"event": "chunk", "data": chunk}
+            yield {"event": "done", "data": full_text}
+        except Exception as e:
+            yield {"event": "error", "data": str(e)}
+
+    return EventSourceResponse(event_generator())
+
+
+# ==================== 模型管理 API ====================
+
+@router.get("/models", response_model=schemas.ModelListResponse, summary="获取模型列表")
+async def list_models():
+    """获取所有可用的模型列表"""
+    try:
+        manager = ModelManager()
+        available = manager.get_available_models()
+        current = manager.get_current_model()
+
+        model_names = {
+            "openai": "GPT-4 / GPT-3.5",
+            "anthropic": "Claude 3",
+            "dashscope": "通义千问",
+            "qianfan": "文心一言",
+            "deepseek": "DeepSeek",
+        }
+
+        models = []
+        for m in available:
+            m_id = m.value if hasattr(m, "value") else str(m)
+            c_id = current.value if hasattr(current, "value") else str(current)
+            models.append(schemas.ModelInfo(
+                name=m_id,
+                display_name=model_names.get(m_id, m_id),
+                is_current=(m_id == c_id),
+            ))
+
+        return schemas.ModelListResponse(
+            models=models,
+            current=c_id,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/switch", response_model=schemas.ModelInfo, summary="切换模型")
+async def switch_model(request: schemas.SwitchModelRequest):
+    """切换到指定模型"""
+    try:
+        model_type = ModelType(request.model_type.lower())
+        agent = _get_agent()
+        agent.switch_model(model_type)
+
+        model_names = {
+            "openai": "GPT-4 / GPT-3.5",
+            "anthropic": "Claude 3",
+            "dashscope": "通义千问",
+            "qianfan": "文心一言",
+            "deepseek": "DeepSeek",
+        }
+
+        return schemas.ModelInfo(
+            name=request.model_type,
+            display_name=model_names.get(request.model_type, request.model_type),
+            is_current=True,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"不支持的模型类型: {request.model_type}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 系统提示词管理 API ====================
+
+@router.get("/system-prompts", response_model=schemas.SystemPromptListResponse, summary="获取系统提示词列表")
+async def list_system_prompts():
+    """获取所有可用的系统提示词"""
+    try:
+        manager = _get_system_prompt_manager()
+        agent = _get_agent()
+        prompts = manager.list_prompts()
+
+        prompt_list = []
+        for p in prompts:
+            prompt_list.append(schemas.SystemPromptInfo(
+                name=p["name"],
+                description=p["description"],
+                category=p["category"],
+                is_current=(p["name"] == agent.system_prompt_name),
+            ))
+
+        return schemas.SystemPromptListResponse(
+            prompts=prompt_list,
+            current=agent.system_prompt_name,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/system-prompts/{name}", response_model=schemas.SystemPromptContentResponse, summary="获取系统提示词内容")
+async def get_system_prompt(name: str):
+    """获取指定系统提示词的内容"""
+    try:
+        manager = _get_system_prompt_manager()
+        content = manager.get_system_prompt(name)
+        file_path = manager.get_prompt_file_path(name)
+        return schemas.SystemPromptContentResponse(
+            name=name,
+            content=content,
+            file_path=str(file_path) if file_path else "",
+        )
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/system-prompts/switch", response_model=schemas.SystemPromptInfo, summary="切换系统提示词")
+async def switch_system_prompt(request: schemas.SwitchSystemPromptRequest):
+    """切换到指定系统提示词"""
+    try:
+        manager = _get_system_prompt_manager()
+        prompts = manager.list_prompts()
+        names = [p["name"] for p in prompts]
+
+        if request.prompt_name not in names:
+            raise HTTPException(status_code=404, detail=f"系统提示词 '{request.prompt_name}' 不存在")
+
+        agent = _get_agent()
+        agent.switch_system_prompt(request.prompt_name)
+
+        meta = manager.index[request.prompt_name]
+        return schemas.SystemPromptInfo(
+            name=request.prompt_name,
+            description=meta["description"],
+            category=meta["category"],
+            is_current=True,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/system-prompts", response_model=schemas.SystemPromptInfo, status_code=201, summary="创建系统提示词")
+async def create_system_prompt(request: schemas.CreateSystemPromptRequest):
+    """创建新的系统提示词（会创建对应的 .md 文件）"""
+    try:
+        manager = _get_system_prompt_manager()
+        success = manager.add_prompt(
+            name=request.name,
+            file_content=request.content,
+            description=request.description,
+            category=request.category,
+        )
+        if not success:
+            raise HTTPException(status_code=409, detail=f"系统提示词 '{request.name}' 已存在")
+
+        return schemas.SystemPromptInfo(
+            name=request.name,
+            description=request.description,
+            category=request.category,
+            is_current=False,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/system-prompts/{name}", response_model=schemas.SystemPromptInfo, summary="编辑系统提示词")
+async def edit_system_prompt(name: str, request: schemas.EditSystemPromptRequest):
+    """编辑系统提示词的内容或元数据"""
+    try:
+        manager = _get_system_prompt_manager()
+        success = manager.edit_prompt(
+            name=name,
+            file_content=request.content,
+            description=request.description,
+            category=request.category,
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail=f"系统提示词 '{name}' 不存在")
+
+        meta = manager.index[name]
+        return schemas.SystemPromptInfo(
+            name=name,
+            description=meta["description"],
+            category=meta["category"],
+            is_current=False,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/system-prompts/{name}", summary="删除系统提示词")
+async def delete_system_prompt(name: str):
+    """删除自定义系统提示词（预设提示词不可删除）"""
+    try:
+        manager = _get_system_prompt_manager()
+        success = manager.delete_prompt(name)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"系统提示词 '{name}' 不存在或不可删除")
+        return {"message": f"系统提示词 '{name}' 已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 知识库管理 API ====================
+
+@router.get("/knowledge/status", response_model=schemas.KnowledgeStatusResponse, summary="知识库状态")
+async def knowledge_status():
+    """获取知识库状态信息"""
+    try:
+        kb = _get_knowledge_base()
+        return schemas.KnowledgeStatusResponse(
+            document_count=kb.get_document_count(),
+            collection_name=kb.collection_name,
+            persist_directory=kb.persist_directory,
+            embedding_model=str(type(kb.embedding_model).__name__) if kb.embedding_model else "未配置",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/knowledge/search", response_model=schemas.KnowledgeSearchResponse, summary="搜索知识库")
+async def knowledge_search(request: schemas.KnowledgeSearchRequest):
+    """在知识库中搜索相关内容"""
+    try:
+        kb = _get_knowledge_base()
+        docs = kb.similarity_search(query=request.query, k=request.k)
+
+        results = []
+        for doc in docs:
+            results.append(schemas.KnowledgeSearchResult(
+                content=doc.page_content,
+                metadata=doc.metadata,
+            ))
+
+        return schemas.KnowledgeSearchResponse(results=results, total=len(results))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/knowledge/upload", response_model=schemas.KnowledgeUploadResponse, summary="上传文档到知识库")
+async def knowledge_upload(file: UploadFile = File(...)):
+    """上传文件到知识库（支持 pdf, txt, md, yaml 等格式）"""
+    try:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="文件名不能为空")
+
+        allowed_extensions = {".pdf", ".txt", ".md", ".yaml", ".yml", ".json", ".csv"}
+        ext = Path(file.filename).suffix.lower()
+        if ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的文件格式: {ext}，支持: {', '.join(allowed_extensions)}",
+            )
+
+        temp_dir = Path("/tmp/knowledge_uploads")
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = temp_dir / file.filename
+
+        content = await file.read()
+        with open(temp_path, "wb") as f:
+            f.write(content)
+
+        kb = _get_knowledge_base()
+        doc_ids = kb.add_document_from_path(str(temp_path))
+
+        return schemas.KnowledgeUploadResponse(
+            file_name=file.filename,
+            document_ids=doc_ids,
+            chunk_count=len(doc_ids),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 自定义提示词管理 API ====================
+
+@router.get("/custom-prompts", response_model=schemas.CustomPromptListResponse, summary="获取自定义提示词列表")
+async def list_custom_prompts():
+    """获取所有自定义提示词模板"""
+    try:
+        pm = _get_prompt_manager()
+        templates = pm.list_templates()
+
+        prompt_list = []
+        for t in templates:
+            prompt_list.append(schemas.CustomPromptInfo(
+                name=t.name,
+                description=t.description or "",
+                category=t.category or "default",
+                input_variables=t.input_variables or [],
+            ))
+
+        return schemas.CustomPromptListResponse(prompts=prompt_list)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/custom-prompts/{name}", response_model=schemas.CustomPromptInfo, summary="获取自定义提示词详情")
+async def get_custom_prompt(name: str):
+    """获取指定自定义提示词模板的详情"""
+    try:
+        pm = _get_prompt_manager()
+        template = pm.get_template(name)
+        if not template:
+            raise HTTPException(status_code=404, detail=f"自定义提示词 '{name}' 不存在")
+
+        return schemas.CustomPromptInfo(
+            name=template.name,
+            description=template.description or "",
+            category=template.category or "default",
+            input_variables=template.input_variables or [],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/custom-prompts", status_code=201, summary="创建自定义提示词")
+async def create_custom_prompt(request: schemas.CreateCustomPromptRequest):
+    """创建新的自定义提示词模板"""
+    try:
+        pm = _get_prompt_manager()
+        success = pm.add_template(
+            name=request.name,
+            template_text=request.template,
+            description=request.description,
+            category=request.category,
+            input_variables=request.input_variables,
+        )
+        if not success:
+            raise HTTPException(status_code=409, detail=f"自定义提示词 '{request.name}' 已存在")
+
+        return {"message": f"自定义提示词 '{request.name}' 已创建", "name": request.name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/custom-prompts/{name}", summary="编辑自定义提示词")
+async def edit_custom_prompt(name: str, request: schemas.CreateCustomPromptRequest):
+    """编辑自定义提示词模板"""
+    try:
+        pm = _get_prompt_manager()
+        template = pm.get_template(name)
+        if not template:
+            raise HTTPException(status_code=404, detail=f"自定义提示词 '{name}' 不存在")
+
+        pm.add_template(
+            name=request.name,
+            template_text=request.template,
+            description=request.description,
+            category=request.category,
+            input_variables=request.input_variables,
+        )
+
+        return {"message": f"自定义提示词 '{name}' 已更新", "name": request.name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/custom-prompts/{name}", summary="删除自定义提示词")
+async def delete_custom_prompt(name: str):
+    """删除自定义提示词模板"""
+    try:
+        pm = _get_prompt_manager()
+        success = pm.delete_template(name)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"自定义提示词 '{name}' 不存在或不可删除")
+        return {"message": f"自定义提示词 '{name}' 已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/custom-prompts/format", response_model=schemas.FormatPromptResponse, summary="格式化提示词")
+async def format_prompt(request: schemas.FormatPromptRequest):
+    """使用变量值格式化指定的提示词模板"""
+    try:
+        pm = _get_prompt_manager()
+        template = pm.get_template(request.prompt_name)
+        if not template:
+            raise HTTPException(status_code=404, detail=f"提示词 '{request.prompt_name}' 不存在")
+
+        formatted = pm.format_prompt(request.prompt_name, **request.variables)
+
+        return schemas.FormatPromptResponse(
+            prompt_name=request.prompt_name,
+            formatted=formatted,
+            variables=list(request.variables.keys()),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 状态信息 API ====================
+
+@router.get("/status", response_model=schemas.AgentStatusResponse, summary="获取 Agent 状态")
+async def agent_status():
+    """获取 Agent 的当前状态信息"""
+    try:
+        agent = _get_agent()
+        manager = ModelManager()
+
+        available = manager.get_available_models()
+        current_model = manager.get_current_model()
+        c_model = current_model.value if hasattr(current_model, "value") else str(current_model)
+        avail_models = [m.value if hasattr(m, "value") else str(m) for m in available]
+
+        history = agent.get_conversation_history()
+
+        try:
+            kb_count = agent.knowledge_base.get_document_count() if agent.knowledge_base else 0
+        except Exception:
+            kb_count = 0
+
+        return schemas.AgentStatusResponse(
+            current_model=c_model,
+            available_models=avail_models,
+            current_system_prompt=agent.system_prompt_name,
+            conversation_length=len(history) if history else 0,
+            knowledge_base_count=kb_count,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/history", response_model=schemas.HistoryResponse, summary="获取对话历史")
+async def conversation_history():
+    """获取当前会话的对话历史"""
+    try:
+        agent = _get_agent()
+        history = agent.get_conversation_history()
+
+        messages = []
+        for msg in history:
+            role = "assistant" if msg.get("role") == "assistant" else "user"
+            messages.append({"role": role, "content": msg.get("content", "")})
+
+        return schemas.HistoryResponse(messages=messages, total=len(messages))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/memory/clear", summary="清空对话记忆")
+async def clear_memory():
+    """清空当前会话的对话记忆"""
+    try:
+        agent = _get_agent()
+        agent.clear_memory()
+        return {"message": "对话记忆已清空"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

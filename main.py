@@ -450,6 +450,48 @@ def status():
     click.echo()
 
 
+@cli.command()
+@click.option('--host', default='127.0.0.1', help='监听主机地址')
+@click.option('--port', default=8000, help='监听端口号')
+@click.option('--reload/--no-reload', default=False, help='是否启用热重载')
+@handle_exceptions
+def api(host: str, port: int, reload: bool):
+    """
+    启动 FastAPI 服务
+
+    启动 RESTful API 服务器，提供所有功能的 HTTP 接口。
+    
+    可用端点：
+    POST   /api/v1/chat                   聊天
+    POST   /api/v1/chat/stream            流式聊天
+    POST   /api/v1/generate               生成推荐理由
+    POST   /api/v1/generate/stream        流式生成推荐理由
+    GET    /api/v1/models                 获取模型列表
+    POST   /api/v1/models/switch          切换模型
+    GET    /api/v1/system-prompts         获取系统提示词列表
+    POST   /api/v1/system-prompts         创建系统提示词
+    POST   /api/v1/system-prompts/switch  切换系统提示词
+    GET    /api/v1/knowledge/status       知识库状态
+    POST   /api/v1/knowledge/search       搜索知识库
+    POST   /api/v1/knowledge/upload       上传文档
+    GET    /api/v1/custom-prompts         自定义提示词列表
+    POST   /api/v1/custom-prompts         创建自定义提示词
+    GET    /api/v1/status                 Agent 状态
+    GET    /api/v1/history                对话历史
+    POST   /api/v1/memory/clear           清空记忆
+    """
+    import uvicorn
+    print_header("启动 API 服务")
+    click.echo(ColorFormatter.info(f"  API 地址: http://{host}:{port}"))
+    click.echo(ColorFormatter.info(f"  文档地址: http://{host}:{port}/docs"))
+    click.echo(ColorFormatter.info(f"  备用文档: http://{host}:{port}/redoc"))
+    click.echo()
+    click.echo(ColorFormatter.info("按 Ctrl+C 停止服务"))
+    click.echo()
+    
+    uvicorn.run("src.api.app:app", host=host, port=port, reload=reload)
+
+
 def main():
     """程序入口"""
     cli()

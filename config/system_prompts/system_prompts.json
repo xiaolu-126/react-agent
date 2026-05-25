@@ -16,5 +16,11 @@
     "file": "code_expert.md",
     "description": "代码专家 - 编程相关问题解答",
     "category": "code"
+  },
+  "test_custom": {
+    "name": "test_custom",
+    "file": "test_custom.md",
+    "description": "测试用",
+    "category": "test"
   }
 }
