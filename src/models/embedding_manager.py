@@ -1,10 +1,16 @@
 import os
 from enum import Enum
 from typing import Optional
+from pathlib import Path
 from dotenv import load_dotenv
 from langchain_core.embeddings import Embeddings
 
-load_dotenv()
+project_root = Path(__file__).parent.parent.parent
+env_path = project_root / "config" / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()
 
 
 class EmbeddingModelType(Enum):
@@ -12,6 +18,7 @@ class EmbeddingModelType(Enum):
     OPENAI = "openai"
     DASHSCOPE = "dashscope"
     QIANFAN = "qianfan"
+    DOUBAO = "doubao"
     LOCAL = "local"
 
 
@@ -23,6 +30,7 @@ class EmbeddingManager:
     - OpenAI Embeddings
     - 通义千问 Embeddings (DashScope)
     - 文心一言 Embeddings (Qianfan)
+    - 豆包 Embeddings (Doubao)
     - 本地模型 (Sentence Transformers)
     """
     
@@ -80,6 +88,19 @@ class EmbeddingManager:
             qianfan_sk=secret_key,
         )
     
+    def _create_doubao_embedding(self) -> Embeddings:
+        """创建豆包 (Doubao) Embedding 模型"""
+        from .doubao_embeddings import DoubaoEmbeddings
+        api_key = self._config["api_key"] or os.getenv("DOUBAO_API_KEY")
+        api_base = self._config["api_base"] or os.getenv("DOUBAO_API_BASE")
+        model_name = os.getenv("EMBEDDING_MODEL_NAME", "doubao-embedding-vision")
+        
+        return DoubaoEmbeddings(
+            api_key=api_key,
+            api_base=api_base,
+            model_name=model_name,
+        )
+    
     def _create_local_embedding(self) -> Embeddings:
         """创建本地 Embedding 模型 (Sentence Transformers)"""
         try:
@@ -116,6 +137,8 @@ class EmbeddingManager:
             self._current_model = self._create_dashscope_embedding()
         elif model_type == EmbeddingModelType.QIANFAN:
             self._current_model = self._create_qianfan_embedding()
+        elif model_type == EmbeddingModelType.DOUBAO:
+            self._current_model = self._create_doubao_embedding()
         elif model_type == EmbeddingModelType.LOCAL:
             self._current_model = self._create_local_embedding()
         else:
