@@ -1,12 +1,17 @@
 import os
 from typing import Dict, Optional
+from pathlib import Path
 from dotenv import load_dotenv
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from .config import ModelType, ModelConfig, ModelManagerConfig
 
-
-load_dotenv()
+project_root = Path(__file__).parent.parent.parent
+env_path = project_root / "config" / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()
 
 
 class ModelManager:
@@ -97,7 +102,10 @@ class ModelManager:
     
     def _initialize_models(self):
         """初始化所有配置的模型"""
-        self.set_current_model(self._config.default_model)
+        try:
+            self.set_current_model(self._config.default_model)
+        except Exception:
+            pass
     
     def _create_openai_model(self, config: ModelConfig) -> BaseChatModel:
         """
