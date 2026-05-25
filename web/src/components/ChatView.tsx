@@ -171,7 +171,7 @@ export default function ChatView() {
             )}
 
             {messages.map((msg) => (
-              <div key={msg.id} className="animate-fade-in flex gap-3 max-w-3xl mx-auto">
+              <div key={msg.id} className={`animate-fade-in flex gap-3 max-w-3xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div
                   className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
                     msg.role === 'user'
@@ -182,10 +182,14 @@ export default function ChatView() {
                   {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-[var(--text-muted)] mb-1">
+                  <div className={`text-xs mb-1 ${msg.role === 'user' ? 'text-right text-[var(--accent-hover)]' : 'text-[var(--text-muted)]'}`}>
                     {msg.role === 'user' ? '你' : 'AI 助手'}
                   </div>
-                  <div className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap break-words">
+                  <div className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                    msg.role === 'user' 
+                      ? 'bg-[var(--accent)]/10 text-[var(--text-primary)] rounded-lg px-3 py-2 rounded-tr-sm' 
+                      : 'text-[var(--text-primary)]'
+                  }`}>
                     {msg.content}
                   </div>
                 </div>
