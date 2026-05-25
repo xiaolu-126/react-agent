@@ -171,7 +171,7 @@ export default function ChatView() {
             )}
 
             {messages.map((msg) => (
-              <div key={msg.id} className={`animate-fade-in flex gap-3 ${msg.role === 'user' ? 'justify-end flex-row-reverse' : 'justify-start'} max-w-4xl mx-auto w-full`}>
+              <div key={msg.id} className={`animate-fade-in flex gap-3 ${msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'} max-w-[80%] w-fit`}>
                 <div
                   className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
                     msg.role === 'user'
@@ -288,59 +288,57 @@ export default function ChatView() {
         </div>
 
         {/* Streamer Panel */}
-        {streamerPanelOpen && (
-          <div className="w-80 border-l border-[var(--border-color)] bg-[var(--bg-secondary)]/30 overflow-y-auto animate-slide-in shrink-0">
-            <div className="p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles size={18} className="text-[var(--accent-hover)]" />
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">生成推荐理由</h3>
-              </div>
+        <div className={`${streamerPanelOpen ? 'w-80' : 'w-0'} overflow-hidden border-l border-[var(--border-color)] bg-[var(--bg-secondary)]/30 shrink-0 transition-all duration-300 ease-in-out`}>
+          <div className="p-4 min-w-80">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles size={18} className="text-[var(--accent-hover)]" />
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">生成推荐理由</h3>
+            </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播名称 *</label>
-                  <input
-                    value={sName}
-                    onChange={(e) => setSName(e.target.value)}
-                    placeholder="例如: 岑先生"
-                    className="input-field text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播标签</label>
-                  <input
-                    value={sTags}
-                    onChange={(e) => setSTags(e.target.value)}
-                    placeholder="游戏主播、技术分享"
-                    className="input-field text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播内容</label>
-                  <textarea
-                    value={sContent}
-                    onChange={(e) => setSContent(e.target.value)}
-                    placeholder="专注于游戏攻略和技术教学"
-                    rows={2}
-                    className="input-field text-sm resize-none"
-                  />
-                </div>
-                <button
-                  onClick={generateRecommendation}
-                  disabled={!sName.trim() || genLoading}
-                  className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
-                >
-                  {genLoading ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <Sparkles size={16} />
-                  )}
-                  <span>{genLoading ? '生成中...' : '生成推荐理由'}</span>
-                </button>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播名称 *</label>
+                <input
+                  value={sName}
+                  onChange={(e) => setSName(e.target.value)}
+                  placeholder="例如: 岑先生"
+                  className="input-field text-sm"
+                />
               </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播标签</label>
+                <input
+                  value={sTags}
+                  onChange={(e) => setSTags(e.target.value)}
+                  placeholder="游戏主播、技术分享"
+                  className="input-field text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播内容</label>
+                <textarea
+                  value={sContent}
+                  onChange={(e) => setSContent(e.target.value)}
+                  placeholder="专注于游戏攻略和技术教学"
+                  rows={2}
+                  className="input-field text-sm resize-none"
+                />
+              </div>
+              <button
+                onClick={generateRecommendation}
+                disabled={!sName.trim() || genLoading}
+                className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
+              >
+                {genLoading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+                <span>{genLoading ? '生成中...' : '生成推荐理由'}</span>
+              </button>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
