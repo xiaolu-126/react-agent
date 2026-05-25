@@ -127,6 +127,21 @@ class Config:
         return os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
     @property
+    def embedding_model(self) -> str:
+        """Embedding 模型类型"""
+        return os.getenv("EMBEDDING_MODEL", "openai")
+
+    @property
+    def embedding_api_key(self) -> Optional[str]:
+        """Embedding 专用 API 密钥"""
+        return os.getenv("EMBEDDING_API_KEY")
+
+    @property
+    def embedding_api_base(self) -> Optional[str]:
+        """Embedding API 基础 URL"""
+        return os.getenv("EMBEDDING_API_BASE")
+
+    @property
     def chroma_db_path(self) -> str:
         """ChromaDB 持久化路径"""
         path = os.getenv("CHROMA_DB_PATH", "./chroma_db")

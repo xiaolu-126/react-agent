@@ -7,9 +7,9 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
 
 from .document_loader import DocumentLoader
+from src.models.embedding_manager import EmbeddingManager
 
 
 class KnowledgeBase:
@@ -29,18 +29,22 @@ class KnowledgeBase:
         Args:
             collection_name: 向量数据库集合名称
             persist_directory: 持久化目录，None 表示内存存储
-            embedding_model: 嵌入模型，默认使用 OpenAIEmbeddings
+            embedding_model: 嵌入模型，默认从配置加载
             chunk_size: 文档分块大小
             chunk_overlap: 分块重叠大小
         """
         self.collection_name = collection_name
         self.persist_directory = persist_directory
-        # 简化，不强制要求 OpenAI key
-        try:
-            self.embedding_model = embedding_model or OpenAIEmbeddings()
-        except Exception:
-            # 如果没有配置 OpenAI，使用一个简单的占位符
-            self.embedding_model = None
+        
+        if embedding_model is not None:
+            self.embedding_model = embedding_model
+        else:
+            try:
+                embedding_manager = EmbeddingManager()
+                self.embedding_model = embedding_manager.get_embedding_model()
+            except Exception as e:
+                self.embedding_model = None
+        
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         
@@ -166,7 +170,7 @@ class KnowledgeBase:
         """
         if self.embedding_model is None:
             return [
-                Document(page_content="知识库未配置嵌入模型，请设置 OPENAI_API_KEY", metadata={})
+                Document(page_content="知识库未配置嵌入模型，请在 .env 文件中配置 EMBEDDING_MODEL 和相关 API KEY", metadata={})
             ]
         return self.vectorstore.similarity_search(
             query=query,
@@ -224,7 +228,7 @@ class KnowledgeBase:
         """
         if self.embedding_model is None:
             return [
-                Document(page_content="知识库未配置嵌入模型，请设置 OPENAI_API_KEY", metadata={})
+                Document(page_content="知识库未配置嵌入模型，请在 .env 文件中配置 EMBEDDING_MODEL 和相关 API KEY", metadata={})
             ]
         return self.vectorstore.max_marginal_relevance_search(
             query=query,
@@ -250,7 +254,7 @@ class KnowledgeBase:
             VectorStoreRetriever 实例
         """
         if self.embedding_model is None:
-            raise ValueError("知识库未配置嵌入模型，请设置 OPENAI_API_KEY")
+            raise ValueError("知识库未配置嵌入模型，请在 .env 文件中配置 EMBEDDING_MODEL 和相关 API KEY")
         return self.vectorstore.as_retriever(
             search_type=search_type,
             search_kwargs=search_kwargs or {},
