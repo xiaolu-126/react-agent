@@ -1,0 +1,47 @@
+# 示例提示词模板配置
+# 可以通过 PromptManager.import_templates() 导入
+
+streamer_recommendation_extended:
+  name: streamer_recommendation_extended
+  template: |
+    你是一位专业的主播推荐专家。请根据以下信息生成主播推荐理由。
+
+    主播信息：
+    - 姓名：{streamer_name}
+    - 标签：{streamer_tags}
+    - 内容特点：{streamer_content}
+    - 粉丝数：{follower_count}
+    - 直播时间：{streaming_schedule}
+    - 互动特点：{interaction_style}
+
+    用户偏好：{user_preferences}
+
+    请生成一段有说服力的推荐理由，突出主播的特色，并说明为什么这位主播适合该用户。推荐理由应该积极、友好、吸引人，150-300字。
+
+    推荐理由：
+  input_variables:
+    - streamer_name
+    - streamer_tags
+    - streamer_content
+    - follower_count
+    - streaming_schedule
+    - interaction_style
+    - user_preferences
+  description: 扩展版主播推荐理由生成
+  category: recommendation
+
+content_analysis:
+  name: content_analysis
+  template: |
+    请分析以下内容，提取关键信息：
+
+    {content}
+
+    请提供：
+    1. 主题
+    2. 情感倾向（正面/负面/中性）
+    3. 关键要点
+  input_variables:
+    - content
+  description: 内容分析提示词
+  category: content

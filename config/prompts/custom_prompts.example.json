@@ -1,0 +1,9 @@
+{
+  "my_custom_template": {
+    "name": "my_custom_template",
+    "template": "这是一个自定义模板，变量是 {variable1} 和 {variable2}",
+    "input_variables": ["variable1", "variable2"],
+    "description": "我的自定义模板",
+    "category": "custom"
+  }
+}
