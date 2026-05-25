@@ -47,6 +47,7 @@ interface AppState {
   knowledgeDocCount: number;
   isLoading: boolean;
   streamerPanelOpen: boolean;
+  settingsPanelOpen: boolean;
   error: string | null;
 
   // derived
@@ -68,6 +69,7 @@ interface AppState {
   switchModel: (name: string) => Promise<void>;
   switchSystemPrompt: (name: string) => Promise<void>;
   setStreamerPanel: (open: boolean) => void;
+  setSettingsPanel: (open: boolean) => void;
   setError: (err: string | null) => void;
 }
 
@@ -97,6 +99,7 @@ export const useStore = create<AppState>((set, get) => {
     knowledgeDocCount: 0,
     isLoading: false,
     streamerPanelOpen: false,
+    settingsPanelOpen: false,
     error: null,
 
     activeConversation: () => {
@@ -232,6 +235,7 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     setStreamerPanel: (open) => set({ streamerPanelOpen: open }),
+    setSettingsPanel: (open) => set({ settingsPanelOpen: open }),
     setError: (err) => set({ error: err }),
   };
 });

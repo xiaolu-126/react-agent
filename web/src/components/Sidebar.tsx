@@ -1,24 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
 import {
   MessageSquare,
-  Settings,
-  Database,
   Sparkles,
   Plus,
   Trash2,
   Check,
   X,
   Pencil,
+  Settings,
 } from 'lucide-react';
 import { useStore } from '../store';
 import type { Conversation } from '../types';
-
-const navItems = [
-  { to: '/', icon: MessageSquare, label: '对话' },
-  { to: '/settings', icon: Settings, label: '管理' },
-  { to: '/knowledge', icon: Database, label: '知识库' },
-];
 
 function ConversationItem({ conv }: { conv: Conversation }) {
   const { activeConversationId, switchConversation, deleteConversation, renameConversation } = useStore();
@@ -106,9 +98,7 @@ function ConversationItem({ conv }: { conv: Conversation }) {
 }
 
 export default function Sidebar() {
-  const { conversations, createConversation } = useStore();
-  const location = useLocation();
-  const isChatPage = location.pathname === '/';
+  const { conversations, createConversation, setSettingsPanel } = useStore();
 
   return (
     <aside className="flex flex-col h-full bg-[#0b1120] border-r border-[var(--border-color)] w-[220px] shrink-0">
@@ -122,52 +112,32 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Conversation list */}
-      {isChatPage && (
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between px-3 pt-3 pb-1">
-            <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">对话列表</span>
-            <button
-              onClick={createConversation}
-              className="p-1 rounded hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--accent-hover)] transition-colors"
-              title="新建对话"
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
-            {conversations.map((conv) => (
-              <ConversationItem key={conv.id} conv={conv} />
-            ))}
-          </div>
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex items-center justify-between px-3 pt-3 pb-1">
+          <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">对话列表</span>
+          <button
+            onClick={createConversation}
+            className="p-1 rounded hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--accent-hover)] transition-colors"
+            title="新建对话"
+          >
+            <Plus size={14} />
+          </button>
         </div>
-      )}
-
-      {/* Nav links */}
-      {!isChatPage && (
-        <div className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                  isActive
-                    ? 'bg-[var(--accent)]/10 text-[var(--accent-hover)] font-medium'
-                    : 'text-[var(--text-secondary)] hover:bg-white/5 hover:text-[var(--text-primary)]'
-                }`
-              }
-            >
-              <item.icon size={18} />
-              {item.label}
-            </NavLink>
+        <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
+          {conversations.map((conv) => (
+            <ConversationItem key={conv.id} conv={conv} />
           ))}
         </div>
-      )}
+      </div>
 
-      <div className="px-4 py-3 border-t border-[var(--border-color)]">
-        <p className="text-[10px] text-[var(--text-muted)]">v1.0.0 • LangGraph</p>
+      <div className="px-3 py-3 border-t border-[var(--border-color)]">
+        <button
+          onClick={() => setSettingsPanel(true)}
+          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm w-full transition-all duration-200 text-[var(--text-secondary)] hover:bg-white/5 hover:text-[var(--text-primary)]"
+        >
+          <Settings size={18} />
+          <span>设置</span>
+        </button>
       </div>
     </aside>
   );

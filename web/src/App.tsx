@@ -1,8 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import ChatView from "./components/ChatView";
-import SettingsView from "./components/SettingsView";
-import KnowledgeView from "./components/KnowledgeView";
+import SettingsPanel from "./components/SettingsPanel";
 import Toast from "./components/Toast";
 
 export default function App() {
@@ -13,10 +12,9 @@ export default function App() {
         <main className="flex-1 flex flex-col min-w-0">
           <Routes>
             <Route path="/" element={<ChatView />} />
-            <Route path="/settings" element={<SettingsView />} />
-            <Route path="/knowledge" element={<KnowledgeView />} />
           </Routes>
         </main>
+        <SettingsPanel />
         <Toast />
       </div>
     </Router>
