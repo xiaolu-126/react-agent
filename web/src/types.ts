@@ -95,3 +95,11 @@ export interface Message {
   content: string;
   timestamp: number;
 }
+
+export interface Conversation {
+  id: string;
+  name: string;
+  messages: Message[];
+  createdAt: number;
+  updatedAt: number;
+}

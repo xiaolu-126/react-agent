@@ -2,7 +2,10 @@ import { useStore } from '../store';
 import { Cpu, FileText, MessageSquare } from 'lucide-react';
 
 export default function StatusBar() {
-  const { currentModel, currentSystemPrompt, messages } = useStore();
+  const conversations = useStore(s => s.conversations);
+  const activeConversationId = useStore(s => s.activeConversationId);
+  const { currentModel, currentSystemPrompt } = useStore();
+  const messages = conversations.find(c => c.id === activeConversationId)?.messages ?? [];
 
   return (
     <div className="flex items-center gap-4 px-5 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/40">

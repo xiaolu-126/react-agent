@@ -10,7 +10,10 @@ function generateId() {
 }
 
 export default function ChatView() {
-  const { messages, addMessage, clearMessages, streamerPanelOpen, setStreamerPanel } = useStore();
+  const conversations = useStore(s => s.conversations);
+  const activeConversationId = useStore(s => s.activeConversationId);
+  const { addMessage, clearActiveConversation, streamerPanelOpen, setStreamerPanel } = useStore();
+  const messages = conversations.find(c => c.id === activeConversationId)?.messages ?? [];
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [streamingText, setStreamingText] = useState('');
@@ -248,7 +251,7 @@ export default function ChatView() {
                     }}
                   />
                   <button
-                    onClick={clearMessages}
+                    onClick={clearActiveConversation}
                     className="absolute right-2.5 bottom-2.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
                     title="清空对话"
                   >
