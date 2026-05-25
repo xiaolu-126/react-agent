@@ -171,7 +171,7 @@ export default function ChatView() {
             )}
 
             {messages.map((msg) => (
-              <div key={msg.id} className={`animate-fade-in flex gap-3 max-w-3xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div key={msg.id} className={`animate-fade-in flex gap-3 ${msg.role === 'user' ? 'justify-end flex-row-reverse' : 'justify-start'} max-w-4xl mx-auto w-full`}>
                 <div
                   className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
                     msg.role === 'user'
@@ -181,14 +181,14 @@ export default function ChatView() {
                 >
                   {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="max-w-[70%]">
                   <div className={`text-xs mb-1 ${msg.role === 'user' ? 'text-right text-[var(--accent-hover)]' : 'text-[var(--text-muted)]'}`}>
                     {msg.role === 'user' ? '你' : 'AI 助手'}
                   </div>
                   <div className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${
                     msg.role === 'user' 
                       ? 'bg-[var(--accent)]/10 text-[var(--text-primary)] rounded-lg px-3 py-2 rounded-tr-sm' 
-                      : 'text-[var(--text-primary)]'
+                      : 'bg-[var(--bg-secondary)]/50 text-[var(--text-primary)] rounded-lg px-3 py-2 rounded-tl-sm'
                   }`}>
                     {msg.content}
                   </div>
@@ -197,13 +197,13 @@ export default function ChatView() {
             ))}
 
             {hasStreaming && (
-              <div className="animate-fade-in flex gap-3 max-w-3xl mx-auto">
+              <div className="animate-fade-in flex gap-3 justify-start max-w-4xl mx-auto w-full">
                 <div className="shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--cyan)]/20 to-[var(--accent)]/20 flex items-center justify-center">
                   <Bot size={16} className="text-[var(--cyan)]" />
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="max-w-[70%]">
                   <div className="text-xs text-[var(--text-muted)] mb-1">AI 助手</div>
-                  <div className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap break-words">
+                  <div className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap break-words bg-[var(--bg-secondary)]/50 rounded-lg px-3 py-2 rounded-tl-sm">
                     {streamingText}
                   </div>
                 </div>
@@ -211,14 +211,16 @@ export default function ChatView() {
             )}
 
             {isLoading && !streamingText && (
-              <div className="flex gap-3 max-w-3xl mx-auto animate-fade-in">
+              <div className="flex gap-3 justify-start max-w-4xl mx-auto w-full animate-fade-in">
                 <div className="shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--cyan)]/20 to-[var(--accent)]/20 flex items-center justify-center">
                   <Bot size={16} className="text-[var(--cyan)]" />
                 </div>
-                <div className="flex items-center gap-1.5 py-2">
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
+                <div className="bg-[var(--bg-secondary)]/50 rounded-lg px-3 py-2 rounded-tl-sm">
+                  <div className="flex items-center gap-1.5">
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                  </div>
                 </div>
               </div>
             )}
