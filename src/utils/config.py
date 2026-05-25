@@ -112,6 +112,21 @@ class Config:
         return os.getenv("QIANFAN_MODEL", "ernie-4.0")
 
     @property
+    def deepseek_api_key(self) -> Optional[str]:
+        """DeepSeek API 密钥"""
+        return os.getenv("DEEPSEEK_API_KEY")
+
+    @property
+    def deepseek_api_base(self) -> str:
+        """DeepSeek API 基础 URL"""
+        return os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
+
+    @property
+    def deepseek_model(self) -> str:
+        """DeepSeek 模型名称"""
+        return os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
+    @property
     def chroma_db_path(self) -> str:
         """ChromaDB 持久化路径"""
         path = os.getenv("CHROMA_DB_PATH", "./chroma_db")

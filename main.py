@@ -294,18 +294,21 @@ def list_models():
     
     manager = ModelManager()
     available_models = manager.get_available_models()
-    current_model = manager.current_model_type
+    current_model = manager.get_current_model()
     
     model_names = {
         "openai": "GPT-4 / GPT-3.5",
         "anthropic": "Claude 3",
         "dashscope": "通义千问",
         "qianfan": "文心一言",
+        "deepseek": "DeepSeek",
     }
     
-    for model_id in available_models:
+    for model_type in available_models:
+        model_id = model_type.value if hasattr(model_type, 'value') else str(model_type)
         model_name = model_names.get(model_id, model_id)
-        if model_id == current_model:
+        current_model_id = current_model.value if hasattr(current_model, 'value') else str(current_model)
+        if model_id == current_model_id:
             click.echo(ColorFormatter.success(f"  • {model_id} - {model_name} [当前使用]"))
         else:
             click.echo(ColorFormatter.info(f"  - {model_id} - {model_name}"))
@@ -315,13 +318,13 @@ def list_models():
 
 
 @cli.command('switch-model')
-@click.argument('model_type', type=click.Choice(['openai', 'anthropic', 'dashscope', 'qianfan'], case_sensitive=False))
+@click.argument('model_type', type=click.Choice(['openai', 'anthropic', 'dashscope', 'qianfan', 'deepseek'], case_sensitive=False))
 @handle_exceptions
 def switch_model(model_type: str):
     """
     切换当前使用的模型
 
-    MODEL_TYPE: 模型类型（openai/anthropic/dashscope/qianfan）
+    MODEL_TYPE: 模型类型（openai/anthropic/dashscope/qianfan/deepseek）
     """
     print_header("切换模型")
     

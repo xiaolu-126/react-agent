@@ -18,6 +18,7 @@ class ModelManager:
     - Anthropic (Claude)
     - 通义千问 (DashScope)
     - 文心一言 (Qianfan)
+    - DeepSeek
     """
     
     def __init__(self, config: Optional[ModelManagerConfig] = None):
@@ -81,6 +82,16 @@ class ModelManager:
             max_tokens=int(os.getenv("AGENT_MAX_TOKENS", 2048)),
         )
         config.models[ModelType.QIANFAN] = qianfan_config
+        
+        deepseek_config = ModelConfig(
+            model_type=ModelType.DEEPSEEK,
+            model_name=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            api_base=os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1"),
+            temperature=float(os.getenv("AGENT_TEMPERATURE", 0.7)),
+            max_tokens=int(os.getenv("AGENT_MAX_TOKENS", 2048)),
+        )
+        config.models[ModelType.DEEPSEEK] = deepseek_config
         
         return config
     
@@ -162,6 +173,25 @@ class ModelManager:
             max_tokens=config.max_tokens,
         )
     
+    def _create_deepseek_model(self, config: ModelConfig) -> BaseChatModel:
+        """
+        创建 DeepSeek 模型
+        
+        Args:
+            config: 模型配置
+            
+        Returns:
+            BaseChatModel: DeepSeek 聊天模型实例
+        """
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=config.model_name,
+            api_key=config.api_key,
+            base_url=config.api_base,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+        )
+    
     def get_chat_model(self, model_type: Optional[ModelType] = None) -> BaseChatModel:
         """
         获取指定类型的聊天模型
@@ -189,6 +219,8 @@ class ModelManager:
                 model = self._create_dashscope_model(config)
             elif target_type == ModelType.QIANFAN:
                 model = self._create_qianfan_model(config)
+            elif target_type == ModelType.DEEPSEEK:
+                model = self._create_deepseek_model(config)
             else:
                 raise ValueError(f"Unsupported model type: {target_type}")
             

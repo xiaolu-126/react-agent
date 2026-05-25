@@ -9,6 +9,7 @@ class ModelType(Enum):
     ANTHROPIC = "anthropic"
     DASHSCOPE = "dashscope"
     QIANFAN = "qianfan"
+    DEEPSEEK = "deepseek"
 
 
 class ModelConfig(BaseModel):
