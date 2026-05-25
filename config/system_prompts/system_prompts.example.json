@@ -1,0 +1,26 @@
+{
+  "streamer_recommender": {
+    "name": "streamer_recommender",
+    "file": "streamer_recommender.md",
+    "description": "主播推荐专家 - 用于生成主播推荐理由",
+    "category": "recommendation"
+  },
+  "general_assistant": {
+    "name": "general_assistant",
+    "file": "general_assistant.md",
+    "description": "通用AI助手 - 日常对话和问题解答",
+    "category": "general"
+  },
+  "code_expert": {
+    "name": "code_expert",
+    "file": "code_expert.md",
+    "description": "代码专家 - 编程相关问题解答",
+    "category": "code"
+  },
+  "my_custom_role": {
+    "name": "my_custom_role",
+    "file": "my_custom_role.md",
+    "description": "自定义角色 - 在这里修改描述",
+    "category": "custom"
+  }
+}

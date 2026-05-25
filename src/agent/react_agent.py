@@ -13,6 +13,7 @@ from langgraph.prebuilt import ToolNode
 from src.models.model_manager import ModelManager
 from src.agent.prompt_manager import PromptManager
 from src.agent.memory import ChatMemoryManager
+from src.agent.system_prompt_manager import SystemPromptManager
 from src.tools.knowledge_base import KnowledgeBase
 from src.tools.web_search import WebSearch, web_search
 
@@ -59,6 +60,8 @@ class ReActAgent:
         memory_manager: Optional[ChatMemoryManager] = None,
         knowledge_base: Optional[KnowledgeBase] = None,
         web_search: Optional[WebSearch] = None,
+        system_prompt_manager: Optional[SystemPromptManager] = None,
+        system_prompt_name: str = "streamer_recommender",
         max_iterations: int = 5,
     ):
         """初始化 ReAct Agent
@@ -69,6 +72,8 @@ class ReActAgent:
             memory_manager: 对话记忆管理器
             knowledge_base: 知识库
             web_search: 网络搜索工具
+            system_prompt_manager: 系统提示词管理器
+            system_prompt_name: 系统提示词名称
             max_iterations: 最大迭代次数
         """
         self.model_manager = model_manager or ModelManager()
@@ -76,6 +81,8 @@ class ReActAgent:
         self.memory_manager = memory_manager or ChatMemoryManager()
         self.knowledge_base = knowledge_base
         self.web_search = web_search or WebSearch()
+        self.system_prompt_manager = system_prompt_manager or SystemPromptManager()
+        self.system_prompt_name = system_prompt_name
         self.max_iterations = max_iterations
         
         self._tools = self._setup_tools()
@@ -129,26 +136,16 @@ class ReActAgent:
     def _get_system_prompt(self) -> str:
         """获取系统提示词
         
+        从 SystemPromptManager 加载，支持自定义 .md 文件。
+        
         Returns:
             系统提示词
         """
-        return """你是一个专业的主播推荐助手。你的任务是根据用户提供的主播昵称，使用可用的工具收集信息，然后生成高质量的推荐理由。
-
-你有以下工具可用：
-1. web_search: 使用网络搜索获取最新信息
-2. knowledge_base_search: 从知识库中搜索相关信息
-
-你的工作流程：
-1. 首先思考需要收集哪些信息
-2. 选择合适的工具进行搜索
-3. 根据搜索结果决定是否需要继续调用工具
-4. 最后整理所有信息，生成推荐理由
-
-请按照以下格式输出你的思考过程：
-- 思考: [你的思考]
-- 决定: [调用工具或直接回答]
-
-当你认为信息足够时，请直接回答用户，生成推荐理由。
+        try:
+            return self.system_prompt_manager.get_system_prompt(self.system_prompt_name)
+        except (ValueError, FileNotFoundError) as e:
+            # 如果加载失败，返回默认提示词
+            return f"""你是一个专业的主播推荐助手。你的任务是根据用户提供的主播昵称生成高质量的推荐理由。
 
 推荐理由应该包括：
 - 主播的基本信息
@@ -384,3 +381,13 @@ class ReActAgent:
             model_type: 模型类型
         """
         self.model_manager.set_current_model(model_type)
+    
+    def switch_system_prompt(self, system_prompt_name: str):
+        """切换系统提示词
+        
+        Args:
+            system_prompt_name: 系统提示词名称
+        """
+        if system_prompt_name not in self.system_prompt_manager.index:
+            raise ValueError(f"系统提示词 '{system_prompt_name}' 不存在")
+        self.system_prompt_name = system_prompt_name

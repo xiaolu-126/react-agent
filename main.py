@@ -104,7 +104,7 @@ def get_agent() -> ReActAgent:
     """获取或初始化 Agent 实例"""
     global _agent
     if _agent is None:
-        get_config()
+        config = get_config()
         _agent = ReActAgent()
     return _agent
 
@@ -335,6 +335,77 @@ def switch_model(model_type: str):
     click.echo(ColorFormatter.info("注意：请确保已在配置文件中设置了对应模型的 API 密钥"))
 
 
+@cli.command('list-system-prompts')
+@handle_exceptions
+def list_system_prompts():
+    """
+    列出所有可用系统提示词
+
+    显示已配置的所有系统提示词及其分类和描述。
+    """
+    from src.agent.system_prompt_manager import SystemPromptManager
+    
+    print_header("可用系统提示词")
+    
+    manager = SystemPromptManager()
+    prompts = manager.list_prompts()
+    current = get_agent().system_prompt_name if _agent else ""
+    
+    for prompt in prompts:
+        name = prompt["name"]
+        desc = prompt["description"]
+        cat = prompt["category"]
+        
+        if name == current:
+            click.echo(ColorFormatter.success(f"  • {name} [{cat}] [当前使用]"))
+        else:
+            click.echo(ColorFormatter.info(f"  - {name} [{cat}]"))
+        click.echo(f"    {desc}")
+    
+    click.echo()
+    click.echo(ColorFormatter.info("使用 'switch-system-prompt' 命令切换系统提示词"))
+    click.echo(ColorFormatter.info("编辑 config/system_prompts/ 下的 .md 文件可自定义内容"))
+
+
+@cli.command('switch-system-prompt')
+@click.argument('prompt_name')
+@handle_exceptions
+def switch_system_prompt(prompt_name: str):
+    """
+    切换当前使用的系统提示词
+
+    PROMPT_NAME: 系统提示词名称（使用 list-system-prompts 查看可用列表）
+    """
+    from src.agent.system_prompt_manager import SystemPromptManager
+    
+    print_header("切换系统提示词")
+    
+    # 检查是否存在
+    manager = SystemPromptManager()
+    prompts = manager.list_prompts()
+    names = [p["name"] for p in prompts]
+    
+    if prompt_name not in names:
+        click.echo(ColorFormatter.error(f"系统提示词 '{prompt_name}' 不存在"))
+        click.echo(ColorFormatter.info("可用系统提示词："))
+        for p in prompts:
+            click.echo(f"  - {p['name']}: {p['description']}")
+        return
+    
+    agent = get_agent()
+    agent.switch_system_prompt(prompt_name)
+    
+    # 显示系统提示词内容
+    content = manager.get_system_prompt(prompt_name)
+    
+    click.echo(ColorFormatter.success(f"✓ 已切换到系统提示词: {prompt_name}"))
+    click.echo()
+    click.echo(ColorFormatter.bold("系统提示词内容:"))
+    click.echo(ColorFormatter.info(content))
+    click.echo()
+    click.echo(ColorFormatter.info(f"如需编辑，请修改文件: {manager.get_prompt_file_path(prompt_name)}"))
+
+
 @cli.command()
 @handle_exceptions
 def status():
@@ -359,8 +430,13 @@ def status():
     click.echo()
     click.echo(ColorFormatter.bold("模型信息:"))
     manager = ModelManager()
-    click.echo(f"  当前使用: {ColorFormatter.success(manager.current_model_type)}")
-    click.echo(f"  可用模型: {', '.join(manager.get_available_models())}")
+    click.echo(f"  当前使用: {ColorFormatter.success(manager.get_current_model().value)}")
+    click.echo(f"  可用模型: {', '.join(m.value for m in manager.get_available_models())}")
+    
+    click.echo()
+    click.echo(ColorFormatter.bold("系统提示词:"))
+    agent = get_agent()
+    click.echo(f"  当前使用: {ColorFormatter.success(agent.system_prompt_name)}")
     
     click.echo()
     click.echo(ColorFormatter.bold("知识库:"))
