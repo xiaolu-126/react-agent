@@ -146,6 +146,24 @@ class KnowledgeStatusResponse(BaseModel):
     embedding_model: str = Field("未配置", description="嵌入模型")
 
 
+class KnowledgeDocumentInfo(BaseModel):
+    """知识库文档信息"""
+    id: str = Field(..., description="文档 ID")
+    content: str = Field(..., description="文档内容摘要")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+
+
+class KnowledgeDocumentListResponse(BaseModel):
+    """知识库文档列表响应"""
+    documents: List[KnowledgeDocumentInfo] = Field(..., description="文档列表")
+    total: int = Field(0, description="文档总数")
+
+
+class KnowledgeDeleteDocumentRequest(BaseModel):
+    """删除知识库文档请求"""
+    ids: List[str] = Field(..., description="要删除的文档 ID 列表")
+
+
 class CustomPromptInfo(BaseModel):
     """自定义提示词信息"""
     name: str = Field(..., description="模板名称")

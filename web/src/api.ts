@@ -10,6 +10,7 @@ import type {
   HistoryResponse,
   KnowledgeStatus,
   KnowledgeSearchResponse,
+  KnowledgeDocumentListResponse,
 } from './types';
 
 const BASE_URL = 'http://localhost:8000/api/v1';
@@ -126,4 +127,15 @@ export const api = {
     }
     return res.json();
   },
+
+  getKnowledgeDocuments: (limit = 50, offset = 0) =>
+    request<KnowledgeDocumentListResponse>(`/knowledge/documents?limit=${limit}&offset=${offset}`),
+
+  deleteKnowledgeDocument: (docId: string) =>
+    request<{ message: string }>(`/knowledge/documents/${docId}`, {
+      method: 'DELETE',
+    }),
+
+  clearKnowledgeBase: () =>
+    request<{ message: string }>('/knowledge/clear', { method: 'POST' }),
 };

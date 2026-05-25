@@ -455,6 +455,53 @@ async def knowledge_upload(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/knowledge/documents", response_model=schemas.KnowledgeDocumentListResponse, summary="获取文档列表")
+async def knowledge_documents(limit: int = 50, offset: int = 0):
+    """获取知识库中文档列表（分页）"""
+    try:
+        kb = _get_knowledge_base()
+        result = kb.get_documents(limit=limit, offset=offset)
+
+        documents = []
+        for i, doc_id in enumerate(result.get("ids", [])):
+            content = result["documents"][i] if i < len(result["documents"]) else ""
+            metadata = result["metadatas"][i] if i < len(result["metadatas"]) else {}
+            documents.append(schemas.KnowledgeDocumentInfo(
+                id=doc_id,
+                content=content[:200],
+                metadata=metadata,
+            ))
+
+        return schemas.KnowledgeDocumentListResponse(
+            documents=documents,
+            total=result["total"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/knowledge/documents/{doc_id}", summary="删除单个文档")
+async def knowledge_delete_document(doc_id: str):
+    """删除知识库中指定 ID 的文档"""
+    try:
+        kb = _get_knowledge_base()
+        kb.delete_documents([doc_id])
+        return {"message": f"文档 {doc_id} 已删除"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/knowledge/clear", summary="清空知识库")
+async def knowledge_clear():
+    """清空整个知识库"""
+    try:
+        kb = _get_knowledge_base()
+        kb.clear()
+        return {"message": "知识库已清空"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== 自定义提示词管理 API ====================
 
 @router.get("/custom-prompts", response_model=schemas.CustomPromptListResponse, summary="获取自定义提示词列表")

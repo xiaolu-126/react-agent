@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../api';
-import type { SystemPromptContent, CustomPromptInfo, KnowledgeStatus, KnowledgeSearchResult } from '../types';
+import type { SystemPromptContent, CustomPromptInfo, KnowledgeStatus, KnowledgeSearchResult, KnowledgeDocumentInfo } from '../types';
 
 type Tab = 'models' | 'prompts' | 'custom' | 'knowledge';
 
@@ -475,6 +475,12 @@ function KnowledgePanel() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [documents, setDocuments] = useState<KnowledgeDocumentInfo[]>([]);
+  const [docTotal, setDocTotal] = useState(0);
+  const [docLoading, setDocLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+
   const fetchStatus = useCallback(async () => {
     setLoading(true);
     try {
@@ -487,9 +493,23 @@ function KnowledgePanel() {
     }
   }, []);
 
+  const fetchDocuments = useCallback(async () => {
+    setDocLoading(true);
+    try {
+      const res = await api.getKnowledgeDocuments(100, 0);
+      setDocuments(res.documents);
+      setDocTotal(res.total);
+    } catch {
+      // silent
+    } finally {
+      setDocLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
-  }, [fetchStatus]);
+    fetchDocuments();
+  }, [fetchStatus, fetchDocuments]);
 
   const doSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -525,10 +545,40 @@ function KnowledgePanel() {
       const res = await api.uploadDocument(file);
       setUploadResult(`上传成功: ${res.file_name} (${res.chunk_count} 个分块)`);
       fetchStatus();
+      fetchDocuments();
     } catch (e) {
       setUploadResult(`上传失败: ${(e as Error).message}`);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDelete = async (docId: string) => {
+    setDeletingId(docId);
+    try {
+      await api.deleteKnowledgeDocument(docId);
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+      setDocTotal((prev) => prev - 1);
+      fetchStatus();
+    } catch {
+      // silent
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClear = async () => {
+    if (!window.confirm('确定要清空整个知识库吗？此操作不可恢复。')) return;
+    setClearing(true);
+    try {
+      await api.clearKnowledgeBase();
+      setDocuments([]);
+      setDocTotal(0);
+      fetchStatus();
+    } catch {
+      // silent
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -603,6 +653,78 @@ function KnowledgePanel() {
             {uploadResult.includes('失败') ? <Trash2 size={12} /> : <CheckCircle2 size={12} />}
             {uploadResult}
           </div>
+        )}
+      </div>
+
+      {/* Document List */}
+      <div className="border border-[var(--border-color)] rounded-xl p-4 bg-[var(--bg-secondary)]/20">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+            <Database size={16} className="text-[var(--accent-hover)]" />
+            文档列表
+            {docTotal > 0 && (
+              <span className="text-[10px] text-[var(--text-muted)] font-normal">共 {docTotal} 个分块</span>
+            )}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button onClick={fetchDocuments} className="btn-ghost text-xs flex items-center gap-1">
+              <RefreshCw size={12} className={docLoading ? 'animate-spin' : ''} />
+              刷新
+            </button>
+            {docTotal > 0 && (
+              <button onClick={handleClear} disabled={clearing} className="btn-ghost text-xs flex items-center gap-1 text-red-400 hover:text-red-300">
+                {clearing ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                清空
+              </button>
+            )}
+          </div>
+        </div>
+        {docLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
+          </div>
+        ) : docTotal === 0 ? (
+          <p className="text-xs text-[var(--text-muted)] py-4 text-center">知识库为空，上传文档后即可查看</p>
+        ) : (
+          <div className="space-y-2 max-h-[320px] overflow-y-auto">
+            {documents.map((doc) => (
+              <div key={doc.id} className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-color)] group">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-2 break-words">
+                      {doc.content || '(空)'}
+                    </p>
+                    {doc.metadata?.source && (
+                      <p className="text-[10px] text-[var(--text-muted)] mt-1 truncate">
+                        来源: {String(doc.metadata.source)}
+                      </p>
+                    )}
+                    {doc.metadata?.page && (
+                      <span className="text-[10px] text-[var(--text-muted)] mt-1 ml-2">
+                        第 {String(doc.metadata.page)} 页
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDelete(doc.id)}
+                    disabled={deletingId === doc.id}
+                    className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-all"
+                  >
+                    {deletingId === doc.id ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={12} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {docTotal > 100 && (
+          <p className="text-[10px] text-[var(--text-muted)] mt-2 text-center">
+            仅显示前 100 条，共 {docTotal} 条
+          </p>
         )}
       </div>
 
