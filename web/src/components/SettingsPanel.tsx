@@ -13,6 +13,7 @@ import {
   Eye,
   Loader2,
   RefreshCw,
+  Settings2,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../api';
@@ -90,43 +91,147 @@ export default function SettingsPanel() {
 
 /* ---------- Model Manager ---------- */
 
+const BUILTIN_MODELS = ['openai', 'anthropic', 'dashscope', 'qianfan', 'deepseek'];
+
 function ModelManager() {
-  const { models, currentModel, switchModel, fetchModels } = useStore();
+  const { models, currentModel, switchModel, fetchModels, addModel, deleteModel } = useStore();
+  const [showAdd, setShowAdd] = useState(false);
+  const [addData, setAddData] = useState({ model_type: '', model_name: '', api_key: '', api_base: '' });
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
 
+  const handleAdd = async () => {
+    if (!addData.model_type.trim() || !addData.model_name.trim() || !addData.api_key.trim()) return;
+    setAdding(true);
+    try {
+      await addModel({
+        model_type: addData.model_type.trim(),
+        model_name: addData.model_name.trim(),
+        api_key: addData.api_key.trim(),
+        api_base: addData.api_base.trim() || undefined,
+      });
+      setShowAdd(false);
+      setAddData({ model_type: '', model_name: '', api_key: '', api_base: '' });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDelete = async (name: string) => {
+    await deleteModel(name);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-[var(--text-primary)]">可用模型</h3>
-        <button onClick={fetchModels} className="btn-ghost text-xs flex items-center gap-1.5">
-          <RefreshCw size={14} />
-          刷新
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowAdd(!showAdd)} className="btn-ghost text-xs flex items-center gap-1.5">
+            <Plus size={14} />
+            添加
+          </button>
+          <button onClick={fetchModels} className="btn-ghost text-xs flex items-center gap-1.5">
+            <RefreshCw size={14} />
+            刷新
+          </button>
+        </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+      {showAdd && (
+        <div className="border border-[var(--border-color)] rounded-xl p-4 mb-4 space-y-3 animate-fade-in bg-[var(--bg-secondary)]/30">
+          <h4 className="text-xs font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+            <Settings2 size={13} />
+            添加自定义模型（OpenAI 兼容）
+          </h4>
+          <input
+            value={addData.model_type}
+            onChange={(e) => setAddData((p) => ({ ...p, model_type: e.target.value }))}
+            placeholder="模型标识（如 my-model，需唯一）"
+            className="input-field text-sm"
+          />
+          <input
+            value={addData.model_name}
+            onChange={(e) => setAddData((p) => ({ ...p, model_name: e.target.value }))}
+            placeholder="模型名称（如 gpt-4o-mini）"
+            className="input-field text-sm"
+          />
+          <input
+            value={addData.api_key}
+            onChange={(e) => setAddData((p) => ({ ...p, api_key: e.target.value }))}
+            placeholder="API 密钥"
+            type="password"
+            className="input-field text-sm"
+          />
+          <input
+            value={addData.api_base}
+            onChange={(e) => setAddData((p) => ({ ...p, api_base: e.target.value }))}
+            placeholder="API 基础 URL（可选，默认使用 OpenAI）"
+            className="input-field text-sm"
+          />
+          <div className="flex gap-2">
+            <button onClick={() => setShowAdd(false)} className="btn-ghost text-sm flex-1">
+              取消
+            </button>
+            <button
+              onClick={handleAdd}
+              disabled={adding || !addData.model_type || !addData.model_name || !addData.api_key}
+              className="btn-primary text-sm flex-1 flex items-center justify-center gap-1.5"
+            >
+              {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              添加
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
         {models.map((model) => (
-          <button
+          <div
             key={model.name}
-            onClick={() => switchModel(model.name)}
-            className={`rounded-xl p-4 text-left transition-all border ${
+            className={`rounded-xl p-3 transition-all border ${
               model.is_current
                 ? 'border-[var(--accent)] bg-[var(--accent)]/5'
-                : 'border-[var(--border-color)] bg-[var(--bg-secondary)]/30 hover:bg-white/5'
+                : 'border-[var(--border-color)] bg-[var(--bg-secondary)]/30'
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-[var(--text-primary)]">
-                {model.display_name}
-              </span>
-              {model.is_current && (
-                <CheckCircle2 size={16} className="text-[var(--accent-hover)]" />
-              )}
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-medium text-[var(--text-primary)]">
+                    {model.display_name}
+                  </span>
+                  {model.is_current && (
+                    <CheckCircle2 size={14} className="text-[var(--accent-hover)] shrink-0" />
+                  )}
+                  <span className={`tag text-xs ${BUILTIN_MODELS.includes(model.name) ? 'tag-blue' : 'tag-amber'}`}>
+                    {BUILTIN_MODELS.includes(model.name) ? '内置' : '自定义'}
+                  </span>
+                </div>
+                <span className="text-xs text-[var(--text-muted)]">{model.name}</span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 ml-2">
+                {!model.is_current && (
+                  <button
+                    onClick={() => switchModel(model.name)}
+                    className="btn-ghost text-xs !py-1 !px-2"
+                  >
+                    切换
+                  </button>
+                )}
+                {!BUILTIN_MODELS.includes(model.name) && (
+                  <button
+                    onClick={() => handleDelete(model.name)}
+                    className="btn-ghost text-xs !py-1 !px-2 text-red-400 hover:text-red-300"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
             </div>
-            <span className="tag tag-blue text-xs">{model.name}</span>
-          </button>
+          </div>
         ))}
       </div>
     </div>

@@ -56,6 +56,21 @@ class SwitchModelRequest(BaseModel):
     model_type: str = Field(..., description="模型类型: openai/anthropic/dashscope/qianfan/deepseek")
 
 
+class AddModelRequest(BaseModel):
+    """添加模型请求"""
+    model_type: str = Field(..., description="自定义模型标识（如 my-model）")
+    model_name: str = Field(..., description="模型名称（如 gpt-4o-mini）")
+    api_key: str = Field(..., description="API 密钥")
+    api_base: Optional[str] = Field(None, description="API 基础 URL（可选）")
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="温度参数")
+    max_tokens: int = Field(default=2048, ge=1, description="最大 Token 数")
+
+
+class DeleteModelRequest(BaseModel):
+    """删除模型请求"""
+    model_type: str = Field(..., description="要删除的模型类型")
+
+
 class SystemPromptInfo(BaseModel):
     """系统提示词信息"""
     name: str = Field(..., description="提示词名称")

@@ -65,6 +65,17 @@ export const api = {
       body: JSON.stringify({ model_type: modelType }),
     }),
 
+  addModel: (data: { model_type: string; model_name: string; api_key: string; api_base?: string; temperature?: number; max_tokens?: number }) =>
+    request<{ name: string; display_name: string; is_current: boolean }>('/models/add', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteModel: (modelType: string) =>
+    request<{ message: string }>(`/models/${modelType}`, {
+      method: 'DELETE',
+    }),
+
   getSystemPrompts: () => request<SystemPromptListResponse>('/system-prompts'),
 
   getSystemPromptContent: (name: string) =>

@@ -12,7 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 from src.agent.react_agent import ReActAgent
 from src.agent.system_prompt_manager import SystemPromptManager
 from src.agent.prompt_manager import PromptManager, PromptTemplate
-from src.models.model_manager import ModelManager, ModelType
+from src.models.model_manager import ModelManager
 from src.tools.knowledge_base import KnowledgeBase
 from . import schemas
 
@@ -159,21 +159,13 @@ async def list_models():
         available = manager.get_available_models()
         current = manager.get_current_model()
 
-        model_names = {
-            "openai": "GPT-4 / GPT-3.5",
-            "anthropic": "Claude 3",
-            "dashscope": "通义千问",
-            "qianfan": "文心一言",
-            "deepseek": "DeepSeek",
-        }
-
         models = []
         for m in available:
             m_id = m.value if hasattr(m, "value") else str(m)
             c_id = current.value if hasattr(current, "value") else str(current)
             models.append(schemas.ModelInfo(
                 name=m_id,
-                display_name=model_names.get(m_id, m_id),
+                display_name=manager.get_model_display_name(m),
                 is_current=(m_id == c_id),
             ))
 
@@ -189,9 +181,9 @@ async def list_models():
 async def switch_model(request: schemas.SwitchModelRequest):
     """切换到指定模型"""
     try:
-        model_type = ModelType(request.model_type.lower())
+        model_type_str = request.model_type.lower()
         agent = _get_agent()
-        agent.switch_model(model_type)
+        agent.switch_model(model_type_str)
 
         model_names = {
             "openai": "GPT-4 / GPT-3.5",
@@ -201,13 +193,51 @@ async def switch_model(request: schemas.SwitchModelRequest):
             "deepseek": "DeepSeek",
         }
 
+        display = model_names.get(model_type_str, model_type_str)
+
         return schemas.ModelInfo(
-            name=request.model_type,
-            display_name=model_names.get(request.model_type, request.model_type),
+            name=model_type_str,
+            display_name=display,
             is_current=True,
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/add", response_model=schemas.ModelInfo, status_code=201, summary="添加自定义模型")
+async def add_model(request: schemas.AddModelRequest):
+    """添加自定义模型（OpenAI 兼容接口）"""
+    try:
+        manager = ModelManager()
+        model_key = manager.add_custom_model(
+            model_type=request.model_type,
+            model_name=request.model_name,
+            api_key=request.api_key,
+            api_base=request.api_base,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+
+        return schemas.ModelInfo(
+            name=model_key,
+            display_name=request.model_name,
+            is_current=False,
+        )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"不支持的模型类型: {request.model_type}")
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/models/{model_type}", summary="删除模型")
+async def delete_model(model_type: str):
+    """删除指定模型（不能删除当前正在使用的模型）"""
+    try:
+        manager = ModelManager()
+        manager.remove_model(model_type)
+        return {"message": f"模型 '{model_type}' 已删除"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
