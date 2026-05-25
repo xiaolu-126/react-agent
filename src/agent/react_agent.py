@@ -1,0 +1,386 @@
+from __future__ import annotations
+
+import json
+from typing import Annotated, List, Dict, Any, Optional, TypedDict, Sequence, Literal
+from operator import add
+
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langchain_core.tools import tool
+from langchain_core.language_models.chat_models import BaseChatModel
+from langgraph.graph import StateGraph, END, MessagesState
+from langgraph.prebuilt import ToolNode
+
+from src.models.model_manager import ModelManager
+from src.agent.prompt_manager import PromptManager
+from src.agent.memory import ChatMemoryManager
+from src.tools.knowledge_base import KnowledgeBase
+from src.tools.web_search import WebSearch, web_search
+
+
+class AgentState(TypedDict):
+    """ReAct Agent 的状态结构
+    
+    Attributes:
+        messages: 对话历史消息列表
+        input: 用户输入
+        streamer_name: 主播名称（如果有的话）
+        tools: 可用工具列表
+        tool_calls: 工具调用历史
+        observations: 观察结果列表
+        final_output: 最终输出
+        user_preferences: 用户偏好信息
+    """
+    messages: Annotated[Sequence[BaseMessage], add]
+    input: str
+    streamer_name: Optional[str]
+    tools: List[Any]
+    tool_calls: List[Dict[str, Any]]
+    observations: List[str]
+    final_output: Optional[str]
+    user_preferences: Optional[str]
+
+
+class ReActAgent:
+    """基于 LangGraph 的 ReAct Agent 实现
+    
+    该 Agent 能够：
+    - 根据用户输入自主决定调用哪些工具
+    - 支持知识库检索和网络搜索
+    - 生成高质量的主播推荐理由
+    - 提供流式输出接口
+    - 支持多模型切换
+    - 管理对话记忆
+    """
+    
+    def __init__(
+        self,
+        model_manager: Optional[ModelManager] = None,
+        prompt_manager: Optional[PromptManager] = None,
+        memory_manager: Optional[ChatMemoryManager] = None,
+        knowledge_base: Optional[KnowledgeBase] = None,
+        web_search: Optional[WebSearch] = None,
+        max_iterations: int = 5,
+    ):
+        """初始化 ReAct Agent
+        
+        Args:
+            model_manager: 模型管理器
+            prompt_manager: 提示词管理器
+            memory_manager: 对话记忆管理器
+            knowledge_base: 知识库
+            web_search: 网络搜索工具
+            max_iterations: 最大迭代次数
+        """
+        self.model_manager = model_manager or ModelManager()
+        self.prompt_manager = prompt_manager or PromptManager()
+        self.memory_manager = memory_manager or ChatMemoryManager()
+        self.knowledge_base = knowledge_base
+        self.web_search = web_search or WebSearch()
+        self.max_iterations = max_iterations
+        
+        self._tools = self._setup_tools()
+        self._graph = self._build_graph()
+        self._compiled_graph = self._graph.compile()
+    
+    def _setup_tools(self) -> List[Any]:
+        """设置可用工具
+        
+        Returns:
+            工具列表
+        """
+        tools = []
+        
+        @tool
+        def knowledge_base_search(
+            query: str = ...,
+            k: int = 4
+        ) -> str:
+            """从知识库中搜索相关信息
+            
+            Args:
+                query: 搜索查询
+                k: 返回结果数量
+                
+            Returns:
+                知识库搜索结果
+            """
+            if not self.knowledge_base:
+                return "知识库未初始化，请先初始化知识库。"
+            
+            try:
+                docs = self.knowledge_base.similarity_search(query, k=k)
+                if not docs:
+                    return "知识库中未找到相关信息。"
+                
+                result = "知识库搜索结果：\n"
+                for i, doc in enumerate(docs, 1):
+                    result += f"{i}. {doc.page_content}\n"
+                    if doc.metadata:
+                        result += f"   元数据: {json.dumps(doc.metadata, ensure_ascii=False)}\n"
+                return result
+            except Exception as e:
+                return f"知识库搜索失败: {str(e)}"
+        
+        tools.append(web_search)
+        tools.append(knowledge_base_search)
+        
+        return tools
+    
+    def _get_system_prompt(self) -> str:
+        """获取系统提示词
+        
+        Returns:
+            系统提示词
+        """
+        return """你是一个专业的主播推荐助手。你的任务是根据用户提供的主播昵称，使用可用的工具收集信息，然后生成高质量的推荐理由。
+
+你有以下工具可用：
+1. web_search: 使用网络搜索获取最新信息
+2. knowledge_base_search: 从知识库中搜索相关信息
+
+你的工作流程：
+1. 首先思考需要收集哪些信息
+2. 选择合适的工具进行搜索
+3. 根据搜索结果决定是否需要继续调用工具
+4. 最后整理所有信息，生成推荐理由
+
+请按照以下格式输出你的思考过程：
+- 思考: [你的思考]
+- 决定: [调用工具或直接回答]
+
+当你认为信息足够时，请直接回答用户，生成推荐理由。
+
+推荐理由应该包括：
+- 主播的基本信息
+- 主播的特点和风格
+- 为什么推荐这个主播
+- 适合什么样的观众
+
+请使用中文回答，并保持友好和专业的语气。"""
+    
+    def _agent_node(self, state: AgentState) -> Dict[str, Any]:
+        """Agent 思考节点
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            更新后的状态
+        """
+        llm = self.model_manager.get_chat_model()
+        llm_with_tools = llm.bind_tools(self._tools)
+        
+        messages = [SystemMessage(content=self._get_system_prompt())]
+        
+        if state["messages"]:
+            messages.extend(state["messages"])
+        else:
+            messages.append(HumanMessage(content=state["input"]))
+        
+        response = llm_with_tools.invoke(messages)
+        
+        return {
+            "messages": [response],
+        }
+    
+    def _should_continue(self, state: AgentState) -> Literal["action", "observation", "__end__"]:
+        """决定是否继续迭代
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            下一个节点名称或结束
+        """
+        messages = state["messages"]
+        last_message = messages[-1]
+        
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            return "action"
+        else:
+            return "__end__"
+    
+    def _action_node(self, state: AgentState) -> Dict[str, Any]:
+        """工具调用节点
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            更新后的状态
+        """
+        tool_node = ToolNode(self._tools)
+        result = tool_node(state)
+        
+        new_tool_calls = []
+        if state["tool_calls"]:
+            new_tool_calls.extend(state["tool_calls"])
+        
+        messages = state["messages"]
+        last_message = messages[-1]
+        if hasattr(last_message, "tool_calls"):
+            for tc in last_message.tool_calls:
+                new_tool_calls.append({
+                    "name": tc["name"],
+                    "args": tc["args"],
+                    "id": tc["id"],
+                })
+        
+        return {
+            "messages": result["messages"],
+            "tool_calls": new_tool_calls,
+        }
+    
+    def _observation_node(self, state: AgentState) -> Dict[str, Any]:
+        """观察结果节点
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            更新后的状态
+        """
+        new_observations = []
+        if state["observations"]:
+            new_observations.extend(state["observations"])
+        
+        messages = state["messages"]
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                new_observations.append(msg.content)
+        
+        return {
+            "observations": new_observations,
+        }
+    
+    def _build_graph(self) -> StateGraph:
+        """构建 LangGraph 状态图
+        
+        Returns:
+            编译后的状态图
+        """
+        graph = StateGraph(AgentState)
+        
+        graph.add_node("agent", self._agent_node)
+        graph.add_node("action", self._action_node)
+        graph.add_node("observation", self._observation_node)
+        
+        graph.set_entry_point("agent")
+        
+        graph.add_conditional_edges(
+            "agent",
+            self._should_continue,
+            {
+                "action": "action",
+                "observation": "observation",
+                "__end__": END,
+            },
+        )
+        
+        graph.add_edge("action", "observation")
+        graph.add_edge("observation", "agent")
+        
+        return graph
+    
+    def run(
+        self,
+        input: str,
+        streamer_name: Optional[str] = None,
+        user_preferences: Optional[str] = None,
+        stream: bool = False,
+    ) -> str:
+        """运行 Agent
+        
+        Args:
+            input: 用户输入
+            streamer_name: 主播名称
+            user_preferences: 用户偏好
+            stream: 是否使用流式输出
+            
+        Returns:
+            Agent 的回复
+        """
+        initial_state: AgentState = {
+            "messages": [],
+            "input": input,
+            "streamer_name": streamer_name,
+            "tools": self._tools,
+            "tool_calls": [],
+            "observations": [],
+            "final_output": None,
+            "user_preferences": user_preferences,
+        }
+        
+        self.memory_manager.add_user_message(input)
+        
+        if stream:
+            output = ""
+            for chunk in self._compiled_graph.stream(initial_state, {"recursion_limit": self.max_iterations}):
+                for key, value in chunk.items():
+                    if key == "agent" and "messages" in value:
+                        for msg in value["messages"]:
+                            if isinstance(msg, AIMessage) and msg.content:
+                                output += msg.content
+                                print(msg.content, end="", flush=True)
+            print()
+        else:
+            result = self._compiled_graph.invoke(initial_state, {"recursion_limit": self.max_iterations})
+            messages = result["messages"]
+            output = ""
+            for msg in messages:
+                if isinstance(msg, AIMessage) and msg.content:
+                    output = msg.content
+        
+        self.memory_manager.add_ai_message(output)
+        return output
+    
+    def stream(self, input: str, streamer_name: Optional[str] = None, user_preferences: Optional[str] = None):
+        """流式输出接口
+        
+        Args:
+            input: 用户输入
+            streamer_name: 主播名称
+            user_preferences: 用户偏好
+            
+        Yields:
+            输出内容的块
+        """
+        initial_state: AgentState = {
+            "messages": [],
+            "input": input,
+            "streamer_name": streamer_name,
+            "tools": self._tools,
+            "tool_calls": [],
+            "observations": [],
+            "final_output": None,
+            "user_preferences": user_preferences,
+        }
+        
+        self.memory_manager.add_user_message(input)
+        
+        for chunk in self._compiled_graph.stream(initial_state, {"recursion_limit": self.max_iterations}):
+            for key, value in chunk.items():
+                if key == "agent" and "messages" in value:
+                    for msg in value["messages"]:
+                        if isinstance(msg, AIMessage) and msg.content:
+                            yield msg.content
+    
+    def get_conversation_history(self):
+        """获取对话历史
+        
+        Returns:
+            对话历史
+        """
+        return self.memory_manager.get_conversation_history()
+    
+    def clear_memory(self):
+        """清空对话记忆"""
+        self.memory_manager.clear()
+    
+    def switch_model(self, model_type):
+        """切换模型
+        
+        Args:
+            model_type: 模型类型
+        """
+        self.model_manager.set_current_model(model_type)
