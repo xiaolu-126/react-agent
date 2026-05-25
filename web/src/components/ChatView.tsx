@@ -22,7 +22,6 @@ export default function ChatView() {
   const [sName, setSName] = useState('');
   const [sTags, setSTags] = useState('');
   const [sContent, setSContent] = useState('');
-  const [sPref, setSPref] = useState('');
   const [genLoading, setGenLoading] = useState(false);
 
   const scrollToBottom = useCallback(() => {
@@ -106,7 +105,6 @@ export default function ChatView() {
         streamer_name: sName,
         tags: sTags,
         content: sContent,
-        preferences: sPref,
       });
       if (!res.ok) throw new Error('Generate stream failed');
       const reader = res.body?.getReader();
@@ -317,16 +315,6 @@ export default function ChatView() {
                     value={sContent}
                     onChange={(e) => setSContent(e.target.value)}
                     placeholder="专注于游戏攻略和技术教学"
-                    rows={2}
-                    className="input-field text-sm resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[var(--text-secondary)] mb-1.5">你的偏好</label>
-                  <textarea
-                    value={sPref}
-                    onChange={(e) => setSPref(e.target.value)}
-                    placeholder="喜欢技术型主播"
                     rows={2}
                     className="input-field text-sm resize-none"
                   />
