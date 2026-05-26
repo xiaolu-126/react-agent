@@ -512,6 +512,183 @@ function SystemPromptManager() {
   );
 }
 
+/* ---------- View/Edit Modal ---------- */
+
+function ViewEditModal({
+  prompt,
+  onClose,
+  onSaved,
+}: {
+  prompt: CustomPromptInfo;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [editMode, setEditMode] = useState(false);
+  const [template, setTemplate] = useState(prompt.template || '');
+  const [desc, setDesc] = useState(prompt.description || '');
+  const [category, setCategory] = useState(prompt.category || 'default');
+  const [variables, setVariables] = useState((prompt.input_variables || []).join(', '));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const vars = variables
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+      await api.editCustomPrompt(prompt.name, {
+        template: template || undefined,
+        description: desc || undefined,
+        category: category || undefined,
+        input_variables: vars.length > 0 ? vars : undefined,
+      });
+      onSaved();
+      setEditMode(false);
+    } catch {
+      // silent
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-[640px] max-w-[92vw] max-h-[85vh] bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-2xl shadow-2xl flex flex-col animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)] shrink-0">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+              {prompt.name}
+            </h3>
+            {desc && (
+              <span className="text-xs text-[var(--text-muted)] truncate max-w-[300px]">
+                {desc}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {editMode ? (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn-primary text-xs flex items-center gap-1.5 !py-1.5 !px-3"
+              >
+                {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                保存
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setEditMode(true);
+                  setTemplate(prompt.template || '');
+                  setDesc(prompt.description || '');
+                  setCategory(prompt.category || 'default');
+                  setVariables((prompt.input_variables || []).join(', '));
+                }}
+                className="btn-ghost text-xs flex items-center gap-1.5 !py-1.5 !px-3"
+              >
+                <Pencil size={12} />
+                编辑
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {editMode ? (
+            <>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">描述</label>
+                <input
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  placeholder="模板描述"
+                  className="input-field text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">分类</label>
+                <input
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="recommendation / general / content / default"
+                  className="input-field text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">变量（逗号分隔）</label>
+                <input
+                  value={variables}
+                  onChange={(e) => setVariables(e.target.value)}
+                  placeholder="streamer_name, tags, content"
+                  className="input-field text-sm"
+                />
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">输入变量名，用逗号分隔</p>
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">模板内容</label>
+                <textarea
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  placeholder="提示词模板内容"
+                  rows={10}
+                  className="input-field text-sm resize-none font-mono w-full"
+                  autoFocus
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-[var(--text-secondary)]">分类:</span>
+                <span className="tag text-xs">{category || 'default'}</span>
+                {prompt.input_variables.length > 0 && (
+                  <>
+                    <span className="text-xs text-[var(--text-secondary)] ml-2">变量:</span>
+                    {prompt.input_variables.map((v) => (
+                      <span key={v} className="text-[10px] text-[var(--cyan)] bg-[var(--cyan)]/10 px-1.5 py-0.5 rounded">
+                        {'{'}{v}{'}'}
+                      </span>
+                    ))}
+                  </>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">模板内容</label>
+                <pre className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap font-mono bg-[var(--bg-secondary)]/30 rounded-xl p-4 border border-[var(--border-color)] max-h-[50vh] overflow-y-auto">
+                  {prompt.template || '(无模板内容)'}
+                </pre>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-color)] shrink-0">
+          {editMode ? (
+            <>
+              <button onClick={() => setEditMode(false)} className="btn-ghost text-sm">取消</button>
+              <button onClick={handleSave} disabled={saving} className="btn-primary text-sm flex items-center gap-1.5">
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                保存
+              </button>
+            </>
+          ) : (
+            <button onClick={onClose} className="btn-ghost text-sm">关闭</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Custom Prompt Manager ---------- */
 
 const BUILTIN_PROMPTS = ['streamer_recommendation', 'content_summary', 'question_answering'];
@@ -839,57 +1016,15 @@ function CustomPromptManager() {
         </div>
       )}
 
-      {/* View Modal */}
-      {viewingPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setViewingPrompt(null)}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div
-            className="relative w-[640px] max-w-[92vw] max-h-[85vh] bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-2xl shadow-2xl flex flex-col animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)] shrink-0">
-              <div className="flex items-center gap-3">
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                  {viewingPrompt.name}
-                </h3>
-                {viewingPrompt.description && (
-                  <span className="text-xs text-[var(--text-muted)] truncate max-w-[300px]">
-                    {viewingPrompt.description}
-                  </span>
-                )}
-              </div>
-              <button onClick={() => setViewingPrompt(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-[var(--text-secondary)]">分类:</span>
-                <span className="tag text-xs">{viewingPrompt.category || 'default'}</span>
-                {viewingPrompt.input_variables.length > 0 && (
-                  <>
-                    <span className="text-xs text-[var(--text-secondary)] ml-2">变量:</span>
-                    {viewingPrompt.input_variables.map((v) => (
-                      <span key={v} className="text-[10px] text-[var(--cyan)] bg-[var(--cyan)]/10 px-1.5 py-0.5 rounded">
-                        {'{'}{v}{'}'}
-                      </span>
-                    ))}
-                  </>
-                )}
-              </div>
-              <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">模板内容</label>
-                <pre className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap font-mono bg-[var(--bg-secondary)]/30 rounded-xl p-4 border border-[var(--border-color)] max-h-[50vh] overflow-y-auto">
-                  {viewingPrompt.template || '(无模板内容)'}
-                </pre>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-color)] shrink-0">
-              <button onClick={() => setViewingPrompt(null)} className="btn-ghost text-sm">关闭</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* View / Edit Modal */}
+      {viewingPrompt && <ViewEditModal
+        prompt={viewingPrompt}
+        onClose={() => setViewingPrompt(null)}
+        onSaved={() => {
+          setViewingPrompt(null);
+          fetchPrompts();
+        }}
+      />}
     </div>
   );
 }
