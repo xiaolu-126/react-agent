@@ -196,8 +196,9 @@ class ModelManager:
             BaseChatModel: DeepSeek 聊天模型实例
         """
         from langchain_openai import ChatOpenAI
-        from langchain_core.messages import AIMessageChunk
+        from langchain_core.messages import AIMessage, AIMessageChunk
         from langchain_core.outputs import ChatGenerationChunk
+        import openai
 
         class _DeepSeekChatModel(ChatOpenAI):
             """处理 DeepSeek reasoning_content 的支持"""
@@ -220,6 +221,22 @@ class ModelManager:
                         if reasoning_content is not None:
                             generation_chunk.message.additional_kwargs["reasoning_content"] = reasoning_content
                 return generation_chunk
+
+            def _create_chat_result(
+                self,
+                response: dict | openai.BaseModel,
+                generation_info: dict | None = None,
+            ) -> ChatResult:
+                result = super()._create_chat_result(response, generation_info)
+                response_dict = response if isinstance(response, dict) else response.model_dump()
+                for i, choice in enumerate(response_dict.get("choices") or []):
+                    if i < len(result.generations):
+                        msg = result.generations[i].message
+                        raw_message = choice.get("message", {})
+                        reasoning = raw_message.get("reasoning_content") or raw_message.get("reasoning")
+                        if reasoning and isinstance(msg, AIMessage):
+                            msg.additional_kwargs["reasoning_content"] = reasoning
+                return result
 
         return _DeepSeekChatModel(
             model=config.model_name,
