@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Sparkles, User, Bot, Loader2, PanelRightClose, PanelRightOpen, Mic, Square } from 'lucide-react';
+import { Send, Sparkles, User, Bot, Loader2, PanelRightClose, PanelRightOpen, Square } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../api';
 import type { Message } from '../types';
@@ -9,9 +9,41 @@ function generateId() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function varToLabel(v: string): string {
+  const labels: Record<string, string> = {
+    streamer_name: '主播名称',
+    streamer_tags: '主播标签',
+    streamer_content: '主播内容',
+    user_preferences: '用户偏好',
+    context: '上下文',
+    question: '问题',
+    content: '内容',
+    name: '名称',
+    tags: '标签',
+    preference: '偏好',
+    follower_count: '粉丝数',
+    streaming_schedule: '直播时间',
+    interaction_style: '互动特点',
+  };
+  return labels[v] || v.replace(/_/g, ' ');
+}
+
+function varToPlaceholder(v: string): string {
+  const placeholders: Record<string, string> = {
+    streamer_name: '例如: 岑先生',
+    streamer_tags: '游戏主播、技术分享',
+    streamer_content: '专注于游戏攻略和技术教学',
+    user_preferences: '喜欢轻松幽默风格的直播',
+    name: '输入名称',
+    content: '输入内容',
+  };
+  return placeholders[v] || `请输入${varToLabel(v)}`;
+}
+
 export default function ChatView() {
   const conversations = useStore(s => s.conversations);
   const activeConversationId = useStore(s => s.activeConversationId);
+  const currentSystemPrompt = useStore(s => s.currentSystemPrompt);
   const { addMessage, clearActiveConversation, streamerPanelOpen, setStreamerPanel } = useStore();
   const messages = conversations.find(c => c.id === activeConversationId)?.messages ?? [];
   const [input, setInput] = useState('');
@@ -21,10 +53,15 @@ export default function ChatView() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Streamer form
-  const [sName, setSName] = useState('');
-  const [sTags, setSTags] = useState('');
-  const [sContent, setSContent] = useState('');
+  // Dynamic template variables form
+  const [templateInfo, setTemplateInfo] = useState<{
+    name: string;
+    description: string;
+    input_variables: string[];
+    template_content: string;
+  } | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [varValues, setVarValues] = useState<Record<string, string>>({});
   const [genLoading, setGenLoading] = useState(false);
 
   const scrollToBottom = useCallback(() => {
@@ -34,6 +71,23 @@ export default function ChatView() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, streamingText, scrollToBottom]);
+
+  // Fetch template info when panel opens or prompt changes
+  useEffect(() => {
+    if (!streamerPanelOpen) return;
+    setTemplateLoading(true);
+    api.getPromptTemplate(currentSystemPrompt)
+      .then((info) => {
+        setTemplateInfo(info);
+        const init: Record<string, string> = {};
+        for (const v of info.input_variables) {
+          init[v] = '';
+        }
+        setVarValues(init);
+      })
+      .catch(() => setTemplateInfo(null))
+      .finally(() => setTemplateLoading(false));
+  }, [streamerPanelOpen, currentSystemPrompt]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -89,25 +143,38 @@ export default function ChatView() {
     setIsLoading(false);
   };
 
-  const generateRecommendation = async () => {
-    if (!sName.trim() || genLoading) return;
+  const generateFromTemplate = async () => {
+    if (!templateInfo || genLoading) return;
+
+    const requiredVars = templateInfo.input_variables;
+    const filled = requiredVars.filter((v) => !varValues[v]?.trim());
+    if (filled.length > 0 && filled.length === requiredVars.length) return;
+
     setGenLoading(true);
 
     const userMsg: Message = {
       id: generateId(),
       role: 'user',
-      content: `请生成主播「${sName}」的推荐理由`,
+      content: `使用 ${templateInfo.name} 模板生成`,
       timestamp: Date.now(),
     };
     addMessage(userMsg);
     setIsLoading(true);
     setStreamingText('');
 
+    abortRef.current = new AbortController();
+
     try {
-      const res = await api.generateStream({
-        streamer_name: sName,
-        tags: sTags,
-        content: sContent,
+      const variables: Record<string, string> = {};
+      for (const v of requiredVars) {
+        if (varValues[v]?.trim()) {
+          variables[v] = varValues[v].trim();
+        }
+      }
+
+      const res = await api.generateFromTemplateStream({
+        template_name: templateInfo.name,
+        variables,
       });
       if (!res.ok) throw new Error('Generate stream failed');
       const reader = res.body?.getReader();
@@ -132,15 +199,17 @@ export default function ChatView() {
       setStreamingText('');
       addMessage({ id: generateId(), role: 'assistant', content: fullText, timestamp: Date.now() });
     } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
       addMessage({
         id: generateId(),
         role: 'assistant',
-        content: `生成推荐失败: ${(e as Error).message}`,
+        content: `生成失败: ${(e as Error).message}`,
         timestamp: Date.now(),
       });
     } finally {
       setIsLoading(false);
       setGenLoading(false);
+      abortRef.current = null;
     }
   };
 
@@ -295,51 +364,59 @@ export default function ChatView() {
           <div className="p-4 min-w-80">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles size={18} className="text-[var(--accent-hover)]" />
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">生成推荐理由</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                {templateInfo ? templateInfo.name : '模板生成'}
+              </h3>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播名称 *</label>
-                <input
-                  value={sName}
-                  onChange={(e) => setSName(e.target.value)}
-                  placeholder="例如: 岑先生"
-                  className="input-field text-sm"
-                />
+            {templateLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
               </div>
-              <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播标签</label>
-                <input
-                  value={sTags}
-                  onChange={(e) => setSTags(e.target.value)}
-                  placeholder="游戏主播、技术分享"
-                  className="input-field text-sm"
-                />
+            ) : templateInfo && templateInfo.input_variables.length > 0 ? (
+              <div className="space-y-3">
+                {templateInfo.input_variables.map((v) => (
+                  <div key={v}>
+                    <label className="block text-xs text-[var(--text-secondary)] mb-1.5">{varToLabel(v)} *</label>
+                    {v.includes('content') || v.includes('preference') || v.includes('question') || v.includes('context') ? (
+                      <textarea
+                        value={varValues[v] || ''}
+                        onChange={(e) => setVarValues((prev) => ({ ...prev, [v]: e.target.value }))}
+                        placeholder={varToPlaceholder(v)}
+                        rows={2}
+                        className="input-field text-sm resize-none"
+                      />
+                    ) : (
+                      <input
+                        value={varValues[v] || ''}
+                        onChange={(e) => setVarValues((prev) => ({ ...prev, [v]: e.target.value }))}
+                        placeholder={varToPlaceholder(v)}
+                        className="input-field text-sm"
+                      />
+                    )}
+                  </div>
+                ))}
+                <div className="text-xs text-[var(--text-muted)] mt-1 break-words leading-relaxed">
+                  {templateInfo.description}
+                </div>
+                <button
+                  onClick={generateFromTemplate}
+                  disabled={genLoading}
+                  className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
+                >
+                  {genLoading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                  <span>{genLoading ? '生成中...' : '生成'}</span>
+                </button>
               </div>
-              <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">主播内容</label>
-                <textarea
-                  value={sContent}
-                  onChange={(e) => setSContent(e.target.value)}
-                  placeholder="专注于游戏攻略和技术教学"
-                  rows={2}
-                  className="input-field text-sm resize-none"
-                />
+            ) : (
+              <div className="text-xs text-[var(--text-muted)] py-4 text-center">
+                {templateInfo ? '当前提示词无变量输入' : '请在设置中选择一个提示词'}
               </div>
-              <button
-                onClick={generateRecommendation}
-                disabled={!sName.trim() || genLoading}
-                className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
-              >
-                {genLoading ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Sparkles size={16} />
-                )}
-                <span>{genLoading ? '生成中...' : '生成推荐理由'}</span>
-              </button>
-            </div>
+            )}
           </div>
         </div>
       </div>

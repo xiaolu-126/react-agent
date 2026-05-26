@@ -23,6 +23,33 @@ class StreamEvent(BaseModel):
     data: str = Field("", description="事件数据")
 
 
+class TemplateInfoRequest(BaseModel):
+    """模板查询请求"""
+    name: str = Field(..., description="模板名称")
+
+
+class TemplateInfoResponse(BaseModel):
+    """模板信息响应"""
+    name: str = Field(..., description="模板名称")
+    description: str = Field(default="", description="模板描述")
+    category: str = Field(default="", description="模板分类")
+    input_variables: List[str] = Field(default_factory=list, description="输入变量列表")
+    template_content: str = Field(default="", description="模板原始内容")
+
+
+class GeneratePromptRequest(BaseModel):
+    """基于模板生成请求"""
+    template_name: str = Field(..., description="模板名称")
+    variables: Dict[str, str] = Field(default_factory=dict, description="模板变量值")
+
+
+class GeneratePromptResponse(BaseModel):
+    """基于模板生成响应"""
+    template_name: str = Field(..., description="模板名称")
+    result: str = Field(..., description="生成结果")
+    formatted_prompt: str = Field(default="", description="格式化后的完整提示词")
+
+
 class GenerateRequest(BaseModel):
     """生成推荐理由请求"""
     streamer_name: str = Field(..., description="主播名称", min_length=1)

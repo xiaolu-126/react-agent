@@ -82,6 +82,24 @@ export const api = {
   getSystemPromptContent: (name: string) =>
     request<SystemPromptContent>(`/system-prompts/${name}`),
 
+  getPromptTemplate: (name: string) =>
+    request<{
+      name: string;
+      description: string;
+      category: string;
+      input_variables: string[];
+      template_content: string;
+    }>(`/prompts/${name}`),
+
+  generateFromTemplateStream: (data: { template_name: string; variables: Record<string, string> }) => {
+    const url = `${BASE_URL}/prompts/generate/stream`;
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
   switchSystemPrompt: (promptName: string) =>
     request<{ name: string }>('/system-prompts/switch', {
       method: 'POST',

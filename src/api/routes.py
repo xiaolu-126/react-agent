@@ -696,6 +696,51 @@ async def format_prompt(request: schemas.FormatPromptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/prompts/{name}", response_model=schemas.TemplateInfoResponse, summary="获取模板信息")
+async def get_prompt_template(name: str):
+    """获取指定模板的详细信息（变量列表、原始内容等）"""
+    try:
+        pm = _get_prompt_manager()
+        data = pm.get_template_data(name)
+        if not data:
+            raise HTTPException(status_code=404, detail=f"模板 '{name}' 不存在")
+        return schemas.TemplateInfoResponse(
+            name=data.name,
+            description=data.description or "",
+            category=data.category or "",
+            input_variables=data.input_variables or [],
+            template_content=data.template or "",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/prompts/generate/stream", summary="基于模板流式生成内容")
+async def generate_from_template_stream(request: schemas.GeneratePromptRequest):
+    """使用指定模板和变量值，流式生成内容"""
+    agent = _get_agent()
+    pm = _get_prompt_manager()
+
+    async def event_generator() -> AsyncGenerator[dict, None]:
+        try:
+            formatted = pm.format_prompt(request.template_name, **request.variables)
+            if not formatted:
+                yield {"event": "error", "data": f"模板 '{request.template_name}' 格式化失败"}
+                return
+
+            full_text = ""
+            async for chunk in agent.stream(input=formatted):
+                full_text += chunk
+                yield {"event": "chunk", "data": chunk}
+            yield {"event": "done", "data": full_text}
+        except Exception as e:
+            yield {"event": "error", "data": str(e)}
+
+    return EventSourceResponse(event_generator())
+
+
 # ==================== 状态信息 API ====================
 
 @router.get("/status", response_model=schemas.AgentStatusResponse, summary="获取 Agent 状态")
