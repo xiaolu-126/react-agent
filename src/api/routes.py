@@ -678,28 +678,7 @@ async def create_custom_prompt(request: schemas.CreateCustomPromptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/custom-prompts/{name}", summary="编辑自定义提示词")
-async def edit_custom_prompt(name: str, request: schemas.CreateCustomPromptRequest):
-    """编辑自定义提示词模板"""
-    try:
-        pm = _get_prompt_manager()
-        template = pm.get_template(name)
-        if not template:
-            raise HTTPException(status_code=404, detail=f"自定义提示词 '{name}' 不存在")
 
-        pm.add_template(
-            name=request.name,
-            template=request.template,
-            description=request.description,
-            category=request.category,
-            input_variables=request.input_variables,
-        )
-
-        return {"message": f"自定义提示词 '{name}' 已更新", "name": request.name}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/custom-prompts/{name}", summary="删除自定义提示词")
