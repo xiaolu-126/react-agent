@@ -1,10 +1,40 @@
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from pathlib import Path
 from dotenv import load_dotenv
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.language_models import LanguageModelInput
 
 from .config import ModelType, ModelConfig, ModelManagerConfig
+
+from langchain_deepseek import ChatDeepSeek
+
+
+class _FixedChatDeepSeek(ChatDeepSeek):
+    """修复 ChatDeepSeek 在请求端不传递 reasoning_content 的问题。
+
+    ChatDeepSeek 只在响应端捕获 reasoning_content（存入 additional_kwargs），
+    但在请求端不会将其写回 API 请求体。这会导致多轮 LLM 调用时
+    DeepSeek 报 400 错误：reasoning_content must be passed back to the API。
+    """
+
+    def _get_request_payload(
+        self,
+        input_: LanguageModelInput,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict:
+        input_messages = self._convert_input(input_).to_messages()
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+
+        for im, pm in zip(input_messages, payload.get("messages", [])):
+            if isinstance(im, AIMessage) and "reasoning_content" in im.additional_kwargs:
+                if pm.get("role") == "assistant":
+                    pm["reasoning_content"] = im.additional_kwargs["reasoning_content"]
+
+        return payload
 
 project_root = Path(__file__).parent.parent.parent
 env_path = project_root / "config" / ".env"
@@ -195,53 +225,10 @@ class ModelManager:
         Returns:
             BaseChatModel: DeepSeek 聊天模型实例
         """
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import AIMessage, AIMessageChunk
-        from langchain_core.outputs import ChatGenerationChunk, ChatResult
-        import openai
-
-        class _DeepSeekChatModel(ChatOpenAI):
-            """处理 DeepSeek reasoning_content 的支持"""
-
-            def _convert_chunk_to_generation_chunk(
-                self,
-                chunk: dict,
-                default_chunk_class: type,
-                base_generation_info: dict | None,
-            ) -> ChatGenerationChunk | None:
-                generation_chunk = super()._convert_chunk_to_generation_chunk(
-                    chunk, default_chunk_class, base_generation_info,
-                )
-                choices = chunk.get("choices")
-                if choices and generation_chunk:
-                    top = choices[0]
-                    if isinstance(generation_chunk.message, AIMessageChunk):
-                        delta = top.get("delta", {})
-                        reasoning_content = delta.get("reasoning_content") or delta.get("reasoning")
-                        if reasoning_content is not None:
-                            generation_chunk.message.additional_kwargs["reasoning_content"] = reasoning_content
-                return generation_chunk
-
-            def _create_chat_result(
-                self,
-                response: dict | openai.BaseModel,
-                generation_info: dict | None = None,
-            ) -> ChatResult:
-                result = super()._create_chat_result(response, generation_info)
-                response_dict = response if isinstance(response, dict) else response.model_dump()
-                for i, choice in enumerate(response_dict.get("choices") or []):
-                    if i < len(result.generations):
-                        msg = result.generations[i].message
-                        raw_message = choice.get("message", {})
-                        reasoning = raw_message.get("reasoning_content") or raw_message.get("reasoning")
-                        if reasoning and isinstance(msg, AIMessage):
-                            msg.additional_kwargs["reasoning_content"] = reasoning
-                return result
-
-        return _DeepSeekChatModel(
+        return _FixedChatDeepSeek(
             model=config.model_name,
             api_key=config.api_key,
-            base_url=config.api_base,
+            api_base=config.api_base or "https://api.deepseek.com/v1",
             temperature=config.temperature,
             max_tokens=config.max_tokens,
         )
