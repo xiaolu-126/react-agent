@@ -514,17 +514,23 @@ function SystemPromptManager() {
 
 /* ---------- Custom Prompt Manager ---------- */
 
+const BUILTIN_PROMPTS = ['streamer_recommendation', 'content_summary', 'question_answering'];
+
 function CustomPromptManager() {
   const [prompts, setPrompts] = useState<CustomPromptInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<CustomPromptInfo | null>(null);
+  const [editTemplate, setEditTemplate] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editVariables, setEditVariables] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const fetchPrompts = async () => {
+  const fetchPrompts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/v1/custom-prompts');
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
+      const data = await api.getCustomPrompts();
       setPrompts(data.prompts);
       setError(null);
     } catch (e) {
@@ -532,11 +538,63 @@ function CustomPromptManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchPrompts();
-  }, []);
+  }, [fetchPrompts]);
+
+  const openEdit = (p: CustomPromptInfo) => {
+    setEditing(p);
+    setEditTemplate('');
+    setEditDesc(p.description || '');
+    setEditCategory(p.category || 'default');
+    setEditVariables((p.input_variables || []).join(', '));
+  };
+
+  const editDetail = async (p: CustomPromptInfo) => {
+    setEditing(p);
+    setEditDesc(p.description || '');
+    setEditCategory(p.category || 'default');
+    setEditVariables((p.input_variables || []).join(', '));
+    setEditTemplate('');
+    setSaving(false);
+  };
+
+  const doSave = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const vars = editVariables
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+
+      await api.editCustomPrompt(editing.name, {
+        description: editDesc || undefined,
+        category: editCategory || undefined,
+        input_variables: vars.length > 0 ? vars : undefined,
+        template: editTemplate || undefined,
+      });
+      setEditing(null);
+      fetchPrompts();
+    } catch {
+      // silent
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deletePrompt = async (name: string) => {
+    if (!window.confirm(`确定要删除提示词 "${name}" 吗？`)) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/custom-prompts/${name}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      fetchPrompts();
+    } catch {
+      // silent
+    }
+  };
 
   if (error) {
     return (
@@ -564,9 +622,23 @@ function CustomPromptManager() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {prompts.map((p) => (
             <div key={p.name} className="border border-[var(--border-color)] rounded-xl p-4 bg-[var(--bg-secondary)]/20">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium text-[var(--text-primary)]">{p.name}</span>
-                <span className="tag tag-blue text-xs">{p.category}</span>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-[var(--text-primary)]">{p.name}</span>
+                  <span className={`tag text-xs shrink-0 ${BUILTIN_PROMPTS.includes(p.name) ? 'tag-blue' : 'tag-amber'}`}>
+                    {BUILTIN_PROMPTS.includes(p.name) ? '内置' : '自定义'}
+                  </span>
+                </div>
+                {!BUILTIN_PROMPTS.includes(p.name) && (
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button onClick={() => editDetail(p)} className="btn-ghost text-[10px] !py-1 !px-1.5">
+                      <Pencil size={11} />
+                    </button>
+                    <button onClick={() => deletePrompt(p.name)} className="btn-ghost text-[10px] !py-1 !px-1.5 text-red-400 hover:text-red-300">
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                )}
               </div>
               {p.description && (
                 <p className="text-xs text-[var(--text-muted)] mb-2">{p.description}</p>
@@ -582,6 +654,73 @@ function CustomPromptManager() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setEditing(null)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative w-[560px] max-w-[92vw] max-h-[85vh] bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-2xl shadow-2xl flex flex-col animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)] shrink-0">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                编辑: {editing.name}
+              </h3>
+              <button onClick={() => setEditing(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">描述</label>
+                <input
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  placeholder="模板描述"
+                  className="input-field text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">分类</label>
+                <input
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
+                  placeholder="recommendation / general / content / default"
+                  className="input-field text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">变量（逗号分隔）</label>
+                <input
+                  value={editVariables}
+                  onChange={(e) => setEditVariables(e.target.value)}
+                  placeholder="name, tags, content"
+                  className="input-field text-sm"
+                />
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">输入变量名，用逗号分隔。如: streamer_name, streamer_tags</p>
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">模板内容</label>
+                <textarea
+                  value={editTemplate}
+                  onChange={(e) => setEditTemplate(e.target.value)}
+                  placeholder="留空则保持原内容..."
+                  rows={6}
+                  className="input-field text-sm resize-none font-mono w-full"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-color)] shrink-0">
+              <button onClick={() => setEditing(null)} className="btn-ghost text-sm">取消</button>
+              <button onClick={doSave} disabled={saving} className="btn-primary text-sm flex items-center gap-1.5">
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                保存
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -667,8 +806,9 @@ function KnowledgePanel() {
     setExpandedLoading(true);
     try {
       const res = await api.getKnowledgeFileDetail(source);
-      setExpandedChunks(res.documents);
-    } catch {
+      setExpandedChunks(res.documents || []);
+    } catch (e) {
+      console.error('获取文件详情失败:', source, e);
       setExpandedChunks([]);
     } finally {
       setExpandedLoading(false);
@@ -977,6 +1117,10 @@ function KnowledgePanel() {
                     {expandedLoading ? (
                       <div className="flex items-center justify-center py-4">
                         <Loader2 size={16} className="animate-spin text-[var(--text-muted)]" />
+                      </div>
+                    ) : expandedChunks.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-xs text-[var(--text-muted)]">
+                        该文件没有可显示的文档块内容
                       </div>
                     ) : (
                       <div className="divide-y divide-[var(--border-color)]">

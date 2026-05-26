@@ -100,6 +100,15 @@ export const api = {
     });
   },
 
+  getCustomPrompts: () =>
+    request<{ prompts: CustomPromptInfo[] }>('/custom-prompts'),
+
+  editCustomPrompt: (name: string, data: { template?: string; input_variables?: string[]; description?: string; category?: string }) =>
+    request<CustomPromptInfo>(`/custom-prompts/${name}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
   switchSystemPrompt: (promptName: string) =>
     request<{ name: string }>('/system-prompts/switch', {
       method: 'POST',
