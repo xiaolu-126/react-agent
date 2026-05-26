@@ -94,6 +94,12 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  editSystemPrompt: (name: string, data: { content?: string; description?: string; category?: string }) =>
+    request<{ name: string }>(`/system-prompts/${name}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
   deleteSystemPrompt: (name: string) =>
     request<{ message: string }>(`/system-prompts/${name}`, {
       method: 'DELETE',

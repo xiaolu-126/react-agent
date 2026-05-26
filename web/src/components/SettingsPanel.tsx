@@ -14,6 +14,8 @@ import {
   Loader2,
   RefreshCw,
   Settings2,
+  Save,
+  Pencil,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../api';
@@ -28,8 +30,101 @@ const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'knowledge', label: '知识库', icon: Database },
 ];
 
+/* ---------- Prompt Edit Modal ---------- */
+
+function PromptEditModal({
+  prompt,
+  onClose,
+  onSaved,
+}: {
+  prompt: SystemPromptContent;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [editMode, setEditMode] = useState(false);
+  const [content, setContent] = useState(prompt.content);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.editSystemPrompt(prompt.name, { content });
+      onSaved();
+      setEditMode(false);
+    } catch {
+      // silent
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-[640px] max-w-[92vw] max-h-[85vh] bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-2xl shadow-2xl flex flex-col animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)] shrink-0">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+              提示词: {prompt.name}
+            </h3>
+            <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[200px]">
+              {prompt.file_path}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {editMode ? (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn-primary text-xs flex items-center gap-1.5 !py-1.5 !px-3"
+              >
+                {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                保存
+              </button>
+            ) : (
+              <button
+                onClick={() => setEditMode(true)}
+                className="btn-ghost text-xs flex items-center gap-1.5 !py-1.5 !px-3"
+              >
+                <Pencil size={12} />
+                编辑
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          {editMode ? (
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="input-field text-sm font-mono w-full min-h-[300px] resize-y leading-relaxed"
+              autoFocus
+            />
+          ) : (
+            <pre className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap font-mono bg-[var(--bg-secondary)]/30 rounded-xl p-4 border border-[var(--border-color)]">
+              {prompt.content}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Main Settings Panel ---------- */
+
 export default function SettingsPanel() {
-  const { settingsPanelOpen, setSettingsPanel } = useStore();
+  const { settingsPanelOpen, setSettingsPanel, fetchStatus } = useStore();
+
   const [activeTab, setActiveTab] = useState<Tab>('models');
 
   useEffect(() => {
@@ -42,13 +137,13 @@ export default function SettingsPanel() {
 
   return (
     <div className="fixed inset-0 z-40 flex" onClick={() => setSettingsPanel(false)}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
       <div
-        className="relative ml-auto w-[600px] max-w-[90vw] h-full bg-[var(--bg-primary)] border-l border-[var(--border-color)] shadow-2xl animate-slide-in flex flex-col"
+        className="relative w-full max-w-[900px] mx-auto my-6 h-[calc(100vh-48px)] bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-2xl shadow-2xl flex flex-col animate-scale-in overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] shrink-0">
           <h2 className="text-base font-semibold text-[var(--text-primary)]">设置</h2>
           <button
             onClick={() => setSettingsPanel(false)}
@@ -58,27 +153,27 @@ export default function SettingsPanel() {
           </button>
         </div>
 
-        <div className="flex border-b border-[var(--border-color)] px-4 shrink-0">
+        <div className="flex border-b border-[var(--border-color)] px-5 shrink-0">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-3 py-2.5 text-xs border-b-2 transition-all ${
+                className={`flex items-center gap-2 px-4 py-3 text-sm border-b-2 transition-all ${
                   activeTab === tab.key
                     ? 'border-[var(--accent)] text-[var(--accent-hover)]'
                     : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
-                <Icon size={15} />
+                <Icon size={16} />
                 {tab.label}
               </button>
             );
           })}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'models' && <ModelManager />}
           {activeTab === 'prompts' && <SystemPromptManager />}
           {activeTab === 'custom' && <CustomPromptManager />}
@@ -98,10 +193,20 @@ function ModelManager() {
   const [showAdd, setShowAdd] = useState(false);
   const [addData, setAddData] = useState({ model_type: '', model_name: '', api_key: '', api_base: '' });
   const [adding, setAdding] = useState(false);
+  const [switching, setSwitching] = useState<string | null>(null);
 
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
+
+  const handleSwitch = async (name: string) => {
+    setSwitching(name);
+    try {
+      await switchModel(name);
+    } finally {
+      setSwitching(null);
+    }
+  };
 
   const handleAdd = async () => {
     if (!addData.model_type.trim() || !addData.model_name.trim() || !addData.api_key.trim()) return;
@@ -187,49 +292,55 @@ function ModelManager() {
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {models.map((model) => (
           <div
             key={model.name}
-            className={`rounded-xl p-3 transition-all border ${
+            className={`rounded-xl p-4 transition-all border ${
               model.is_current
-                ? 'border-[var(--accent)] bg-[var(--accent)]/5'
-                : 'border-[var(--border-color)] bg-[var(--bg-secondary)]/30'
+                ? 'border-[var(--accent)] bg-[var(--accent)]/5 ring-1 ring-[var(--accent)]/20'
+                : 'border-[var(--border-color)] bg-[var(--bg-secondary)]/30 hover:border-[var(--text-muted)]/40'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-medium text-[var(--text-primary)]">
-                    {model.display_name}
-                  </span>
-                  {model.is_current && (
-                    <CheckCircle2 size={14} className="text-[var(--accent-hover)] shrink-0" />
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-medium text-[var(--text-primary)] truncate">
+                  {model.display_name}
+                </span>
+                <span className={`tag text-xs shrink-0 ${BUILTIN_MODELS.includes(model.name) ? 'tag-blue' : 'tag-amber'}`}>
+                  {BUILTIN_MODELS.includes(model.name) ? '内置' : '自定义'}
+                </span>
+              </div>
+              {model.is_current && (
+                <CheckCircle2 size={15} className="text-[var(--accent-hover)] shrink-0 ml-1" />
+              )}
+            </div>
+            <div className="text-xs text-[var(--text-muted)] mb-3 truncate">{model.name}</div>
+            <div className="flex items-center gap-2">
+              {!model.is_current ? (
+                <button
+                  onClick={() => handleSwitch(model.name)}
+                  disabled={switching === model.name}
+                  className="btn-primary text-xs !py-1.5 !px-3 flex items-center gap-1.5"
+                >
+                  {switching === model.name ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Cpu size={12} />
                   )}
-                  <span className={`tag text-xs ${BUILTIN_MODELS.includes(model.name) ? 'tag-blue' : 'tag-amber'}`}>
-                    {BUILTIN_MODELS.includes(model.name) ? '内置' : '自定义'}
-                  </span>
-                </div>
-                <span className="text-xs text-[var(--text-muted)]">{model.name}</span>
-              </div>
-              <div className="flex items-center gap-1 shrink-0 ml-2">
-                {!model.is_current && (
-                  <button
-                    onClick={() => switchModel(model.name)}
-                    className="btn-ghost text-xs !py-1 !px-2"
-                  >
-                    切换
-                  </button>
-                )}
-                {!BUILTIN_MODELS.includes(model.name) && (
-                  <button
-                    onClick={() => handleDelete(model.name)}
-                    className="btn-ghost text-xs !py-1 !px-2 text-red-400 hover:text-red-300"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </div>
+                  使用
+                </button>
+              ) : (
+                <span className="text-xs text-[var(--accent-hover)] font-medium px-2">当前使用</span>
+              )}
+              {!BUILTIN_MODELS.includes(model.name) && (
+                <button
+                  onClick={() => handleDelete(model.name)}
+                  className="btn-ghost text-xs !py-1.5 !px-2 text-red-400 hover:text-red-300 ml-auto"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -244,6 +355,7 @@ function SystemPromptManager() {
   const { systemPrompts, currentSystemPrompt, switchSystemPrompt, fetchSystemPrompts } = useStore();
   const [selectedContent, setSelectedContent] = useState<SystemPromptContent | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const [switching, setSwitching] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -265,6 +377,15 @@ function SystemPromptManager() {
     }
   };
 
+  const handleSwitch = async (name: string) => {
+    setSwitching(name);
+    try {
+      await switchSystemPrompt(name);
+    } finally {
+      setSwitching(null);
+    }
+  };
+
   const createPrompt = async () => {
     if (!newName.trim() || !newContent.trim()) return;
     try {
@@ -283,14 +404,14 @@ function SystemPromptManager() {
     try {
       await api.deleteSystemPrompt(name);
       await fetchSystemPrompts();
-      setSelectedContent(null);
+      if (selectedContent?.name === name) setSelectedContent(null);
     } catch {
       // silent
     }
   };
 
   return (
-    <div className="grid grid-cols-1 gap-4">
+    <div className="grid grid-cols-1 gap-5">
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-[var(--text-primary)]">提示词列表</h3>
@@ -327,38 +448,47 @@ function SystemPromptManager() {
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {systemPrompts.map((p) => (
             <div
               key={p.name}
-              className={`border rounded-xl p-3 transition-all ${
-                p.is_current ? 'border-[var(--cyan)]' : 'border-[var(--border-color)] bg-[var(--bg-secondary)]/20'
+              className={`border rounded-xl p-4 transition-all ${
+                p.is_current ? 'border-[var(--cyan)] ring-1 ring-[var(--cyan)]/20' : 'border-[var(--border-color)] bg-[var(--bg-secondary)]/20 hover:border-[var(--text-muted)]/40'
               }`}
             >
               <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-[var(--text-primary)]">{p.name}</span>
-                  <span className={`tag ${p.category === 'recommendation' ? 'tag-cyan' : p.category === 'general' ? 'tag-blue' : 'tag-amber'} text-xs`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-[var(--text-primary)] truncate">{p.name}</span>
+                  <span className={`tag shrink-0 ${p.category === 'recommendation' ? 'tag-cyan' : p.category === 'general' ? 'tag-blue' : 'tag-amber'} text-xs`}>
                     {p.category}
                   </span>
                 </div>
-                {p.is_current && <span className="text-[10px] text-[var(--cyan)]">当前</span>}
+                {p.is_current && <span className="text-[10px] text-[var(--cyan)] shrink-0 ml-1">当前</span>}
               </div>
-              <p className="text-xs text-[var(--text-muted)] mb-2">{p.description}</p>
+              <p className="text-xs text-[var(--text-muted)] mb-3 line-clamp-2">{p.description}</p>
               <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => switchSystemPrompt(p.name)}
-                  disabled={p.is_current}
-                  className="btn-ghost text-xs !py-1 !px-2"
-                >
-                  切换
-                </button>
-                <button onClick={() => viewContent(p.name)} className="btn-ghost text-xs !py-1 !px-2">
+                {!p.is_current ? (
+                  <button
+                    onClick={() => handleSwitch(p.name)}
+                    disabled={switching === p.name}
+                    className="btn-primary text-xs !py-1.5 !px-3 flex items-center gap-1.5"
+                  >
+                    {switching === p.name ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <FileText size={12} />
+                    )}
+                    使用
+                  </button>
+                ) : (
+                  <span className="text-xs text-[var(--cyan)] font-medium px-2">当前使用</span>
+                )}
+                <button onClick={() => viewContent(p.name)} className="btn-ghost text-xs !py-1.5 !px-2 flex items-center gap-1">
                   {loading === p.name ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
                   查看
                 </button>
                 {!['streamer_recommender', 'general_assistant', 'code_expert'].includes(p.name) && (
-                  <button onClick={() => deletePrompt(p.name)} className="btn-ghost text-xs !py-1 !px-2 text-red-400 hover:text-red-300">
+                  <button onClick={() => deletePrompt(p.name)} className="btn-ghost text-xs !py-1.5 !px-2 text-red-400 hover:text-red-300 ml-auto">
                     <Trash2 size={12} />
                   </button>
                 )}
@@ -369,15 +499,13 @@ function SystemPromptManager() {
       </div>
 
       {selectedContent && (
-        <div className="border border-[var(--border-color)] rounded-xl p-4 animate-fade-in bg-[var(--bg-secondary)]/20">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-[var(--text-primary)]">{selectedContent.name}</span>
-            <span className="text-[10px] text-[var(--text-muted)]">{selectedContent.file_path}</span>
-          </div>
-          <pre className="text-xs text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap font-mono bg-[var(--bg-primary)] rounded-lg p-3">
-            {selectedContent.content}
-          </pre>
-        </div>
+        <PromptEditModal
+          prompt={selectedContent}
+          onClose={() => setSelectedContent(null)}
+          onSaved={() => {
+            fetchSystemPrompts();
+          }}
+        />
       )}
     </div>
   );
@@ -432,15 +560,15 @@ function CustomPromptManager() {
           <Loader2 size={20} className="animate-spin text-[var(--text-muted)]" />
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {prompts.map((p) => (
-            <div key={p.name} className="border border-[var(--border-color)] rounded-xl p-3 bg-[var(--bg-secondary)]/20">
+            <div key={p.name} className="border border-[var(--border-color)] rounded-xl p-4 bg-[var(--bg-secondary)]/20">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-sm font-medium text-[var(--text-primary)]">{p.name}</span>
                 <span className="tag tag-blue text-xs">{p.category}</span>
               </div>
               {p.description && (
-                <p className="text-xs text-[var(--text-muted)] mb-1">{p.description}</p>
+                <p className="text-xs text-[var(--text-muted)] mb-2">{p.description}</p>
               )}
               {p.input_variables.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
@@ -597,7 +725,7 @@ function KnowledgePanel() {
           </button>
         </div>
         {status ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-[var(--bg-secondary)]/50 rounded-lg p-3">
               <div className="text-2xl font-bold text-[var(--accent-hover)]">{status.document_count}</div>
               <div className="text-xs text-[var(--text-muted)]">文档数量</div>
