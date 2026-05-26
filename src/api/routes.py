@@ -568,9 +568,9 @@ async def knowledge_files():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/knowledge/files/{source}", response_model=schemas.KnowledgeFileDetailResponse, summary="获取文件文档块详情")
+@router.get("/knowledge/file-detail", response_model=schemas.KnowledgeFileDetailResponse, summary="获取文件文档块详情")
 async def knowledge_file_detail(source: str):
-    """获取指定文件的所有文档块"""
+    """获取指定文件的所有文档块（通过查询参数传递 source）"""
     try:
         kb = _get_knowledge_base()
         result = kb.get_file_chunks(source)
@@ -591,9 +591,9 @@ async def knowledge_file_detail(source: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/knowledge/files/{source}", response_model=schemas.KnowledgeDeleteFileResponse, summary="删除文件（所有文档块）")
+@router.delete("/knowledge/file-detail", response_model=schemas.KnowledgeDeleteFileResponse, summary="删除文件（所有文档块）")
 async def knowledge_delete_file(source: str):
-    """删除指定文件的所有文档块"""
+    """删除指定文件的所有文档块（通过查询参数传递 source）"""
     try:
         kb = _get_knowledge_base()
         deleted = kb.delete_file(source)

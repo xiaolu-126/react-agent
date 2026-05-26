@@ -172,12 +172,12 @@ export const api = {
 
   getKnowledgeFileDetail: (source: string) =>
     request<{ source: string; chunk_count: number; documents: KnowledgeDocumentListResponse['documents'] }>(
-      `/knowledge/files/${encodeURIComponent(source)}`
+      `/knowledge/file-detail?source=${encodeURIComponent(source)}`
     ),
 
   deleteKnowledgeFile: (source: string) =>
     request<{ source: string; deleted_chunks: number; message: string }>(
-      `/knowledge/files/${encodeURIComponent(source)}`,
+      `/knowledge/file-detail?source=${encodeURIComponent(source)}`,
       { method: 'DELETE' }
     ),
 
