@@ -120,9 +120,12 @@ export const api = {
       body: JSON.stringify({ query, k }),
     }),
 
-  uploadDocument: async (file: File) => {
+  uploadDocument: async (file: File, metadata?: Record<string, string>) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (metadata && Object.keys(metadata).length > 0) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
     const res = await fetch(`${BASE_URL}/knowledge/upload`, {
       method: 'POST',
       body: formData,

@@ -421,8 +421,11 @@ async def knowledge_search(request: schemas.KnowledgeSearchRequest):
 
 
 @router.post("/knowledge/upload", response_model=schemas.KnowledgeUploadResponse, summary="上传文档到知识库")
-async def knowledge_upload(file: UploadFile = File(...)):
-    """上传文件到知识库（支持 pdf, txt, md, yaml 等格式）"""
+async def knowledge_upload(
+    file: UploadFile = File(...),
+    metadata: Optional[str] = Form(None),
+):
+    """上传文件到知识库（支持 pdf, txt, md, yaml 等格式），可附带元数据（JSON 字符串）"""
     try:
         if not file.filename:
             raise HTTPException(status_code=400, detail="文件名不能为空")
@@ -443,8 +446,17 @@ async def knowledge_upload(file: UploadFile = File(...)):
         with open(temp_path, "wb") as f:
             f.write(content)
 
+        parsed_metadata = None
+        if metadata:
+            try:
+                parsed_metadata = json.loads(metadata)
+                if not isinstance(parsed_metadata, dict):
+                    raise ValueError("metadata must be a JSON object")
+            except (json.JSONDecodeError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"元数据格式错误: {str(e)}")
+
         kb = _get_knowledge_base()
-        doc_ids = kb.add_document_from_path(str(temp_path))
+        doc_ids = kb.add_document_from_path(str(temp_path), metadata=parsed_metadata)
 
         return schemas.KnowledgeUploadResponse(
             file_name=file.filename,

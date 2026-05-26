@@ -602,6 +602,7 @@ function KnowledgePanel() {
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [metaEntries, setMetaEntries] = useState<{ key: string; value: string }[]>([]);
 
   const [documents, setDocuments] = useState<KnowledgeDocumentInfo[]>([]);
   const [docTotal, setDocTotal] = useState(0);
@@ -670,8 +671,15 @@ function KnowledgePanel() {
     setUploading(true);
     setUploadResult(null);
     try {
-      const res = await api.uploadDocument(file);
+      const metaObj: Record<string, string> = {};
+      for (const entry of metaEntries) {
+        if (entry.key.trim()) {
+          metaObj[entry.key.trim()] = entry.value;
+        }
+      }
+      const res = await api.uploadDocument(file, metaObj);
       setUploadResult(`上传成功: ${res.file_name} (${res.chunk_count} 个分块)`);
+      setMetaEntries([]);
       fetchStatus();
       fetchDocuments();
     } catch (e) {
@@ -775,6 +783,65 @@ function KnowledgePanel() {
             {uploading ? '上传处理中...' : '拖拽文件到此处，或点击选择'}
           </p>
           <p className="text-xs text-[var(--text-muted)] mt-1">支持 PDF、TXT、MD、YAML、JSON、CSV 格式</p>
+        </div>
+
+        {/* Metadata Editor */}
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs text-[var(--text-secondary)]">元数据（可选）</span>
+            <button
+              onClick={() => setMetaEntries((prev) => [...prev, { key: '', value: '' }])}
+              className="btn-ghost text-[10px] flex items-center gap-1 !py-0.5 !px-1.5"
+            >
+              <Plus size={10} />
+              添加字段
+            </button>
+          </div>
+          {metaEntries.length > 0 && (
+            <div className="space-y-1.5">
+              {metaEntries.map((entry, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <input
+                    value={entry.key}
+                    onChange={(e) =>
+                      setMetaEntries((prev) =>
+                        prev.map((m, j) => (j === i ? { ...m, key: e.target.value } : m))
+                      )
+                    }
+                    placeholder="字段名"
+                    className="input-field text-xs flex-1 min-w-0"
+                  />
+                  <input
+                    value={entry.value}
+                    onChange={(e) =>
+                      setMetaEntries((prev) =>
+                        prev.map((m, j) => (j === i ? { ...m, value: e.target.value } : m))
+                      )
+                    }
+                    placeholder="值"
+                    className="input-field text-xs flex-1 min-w-0"
+                  />
+                  <button
+                    onClick={() => setMetaEntries((prev) => prev.filter((_, j) => j !== i))}
+                    className="p-1 rounded hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 shrink-0"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {metaEntries.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {metaEntries
+                .filter((m) => m.key.trim())
+                .map((m, i) => (
+                  <span key={i} className="text-[10px] text-[var(--cyan)] bg-[var(--cyan)]/10 px-1.5 py-0.5 rounded">
+                    {m.key.trim()}: {m.value || '(空)'}
+                  </span>
+                ))}
+            </div>
+          )}
         </div>
         {uploadResult && (
           <div className={`flex items-center gap-2 mt-3 text-xs ${uploadResult.includes('失败') ? 'text-red-400' : 'text-[var(--cyan)]'}`}>
