@@ -171,12 +171,10 @@ class Config:
 
     @property
     def log_level(self) -> str:
-        """日志级别"""
         return os.getenv("LOG_LEVEL", "INFO")
 
     @property
     def log_file(self) -> str:
-        """日志文件路径"""
         path = os.getenv("LOG_FILE", "./logs/agent.log")
         if not os.path.isabs(path):
             path = str(self.project_root / path)

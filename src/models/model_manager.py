@@ -263,14 +263,24 @@ class ModelManager:
             ValueError: 如果模型类型未配置
         """
         if isinstance(model_type, str):
+            try:
+                mt = ModelType(model_type.lower())
+                if mt in self._config.models:
+                    self._current_model = mt
+                    self._current_custom_model = None
+                    self.get_chat_model(mt)
+                    return
+            except ValueError:
+                pass
+
             if model_type not in self._custom_models:
-                raise ValueError(f"Custom model '{model_type}' is not configured")
+                raise ValueError(f"自定义模型 '{model_type}' 未配置")
             self._current_custom_model = model_type
             self._current_model = None
             self.get_chat_model(model_type)
         else:
             if model_type not in self._config.models:
-                raise ValueError(f"Model type {model_type} is not configured")
+                raise ValueError(f"模型类型 {model_type} 未配置")
             self._current_model = model_type
             self._current_custom_model = None
             self.get_chat_model(model_type)
@@ -381,7 +391,7 @@ class ModelManager:
             bool: 是否成功删除
             
         Raises:
-            ValueError: 如果模型不存在或是当前正在使用的模型
+            ValueError: 如果模型不存在或是当前正在使用的模型或是内置模型
         """
         if model_type in self._custom_models:
             if model_type == self._current_custom_model:
@@ -392,20 +402,11 @@ class ModelManager:
             return True
         
         try:
-            mt = ModelType(model_type)
+            mt = ModelType(model_type.lower())
         except ValueError:
             raise ValueError(f"模型 '{model_type}' 不存在")
         
-        if mt not in self._config.models:
-            raise ValueError(f"模型 '{model_type}' 不存在")
-        
-        if mt == self._current_model:
-            raise ValueError("不能删除当前正在使用的模型")
-        
-        del self._config.models[mt]
-        if mt in self._chat_models:
-            del self._chat_models[mt]
-        return True
+        raise ValueError(f"内置模型 '{model_type}' 不可删除")
     
     def update_model_config(self, model_type: ModelType, config: ModelConfig):
         """

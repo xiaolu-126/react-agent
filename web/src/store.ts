@@ -222,6 +222,7 @@ export const useStore = create<AppState>((set, get) => {
       try {
         await api.switchModel(name);
         set({ currentModel: name });
+        await get().fetchModels();
       } catch (e: unknown) {
         set({ error: `切换模型失败: ${e instanceof Error ? e.message : String(e)}` });
       }
@@ -251,6 +252,7 @@ export const useStore = create<AppState>((set, get) => {
       try {
         await api.switchSystemPrompt(name);
         set({ currentSystemPrompt: name });
+        await get().fetchSystemPrompts();
       } catch (e: unknown) {
         set({ error: `切换系统提示词失败: ${e instanceof Error ? e.message : String(e)}` });
       }

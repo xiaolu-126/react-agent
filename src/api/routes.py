@@ -12,7 +12,6 @@ from sse_starlette.sse import EventSourceResponse
 from src.agent.react_agent import ReActAgent
 from src.agent.system_prompt_manager import SystemPromptManager
 from src.agent.prompt_manager import PromptManager, PromptTemplate
-from src.models.model_manager import ModelManager
 from src.tools.knowledge_base import KnowledgeBase
 from . import schemas
 
@@ -155,7 +154,8 @@ async def generate_recommendation_stream(request: schemas.GenerateRequest):
 async def list_models():
     """获取所有可用的模型列表"""
     try:
-        manager = ModelManager()
+        agent = _get_agent()
+        manager = agent.model_manager
         available = manager.get_available_models()
         current = manager.get_current_model()
 
@@ -208,7 +208,8 @@ async def switch_model(request: schemas.SwitchModelRequest):
 async def add_model(request: schemas.AddModelRequest):
     """添加自定义模型（OpenAI 兼容接口）"""
     try:
-        manager = ModelManager()
+        agent = _get_agent()
+        manager = agent.model_manager
         model_key = manager.add_custom_model(
             model_type=request.model_type,
             model_name=request.model_name,
@@ -233,7 +234,8 @@ async def add_model(request: schemas.AddModelRequest):
 async def delete_model(model_type: str):
     """删除指定模型（不能删除当前正在使用的模型）"""
     try:
-        manager = ModelManager()
+        agent = _get_agent()
+        manager = agent.model_manager
         manager.remove_model(model_type)
         return {"message": f"模型 '{model_type}' 已删除"}
     except ValueError as e:
@@ -636,7 +638,7 @@ async def agent_status():
     """获取 Agent 的当前状态信息"""
     try:
         agent = _get_agent()
-        manager = ModelManager()
+        manager = agent.model_manager
 
         available = manager.get_available_models()
         current_model = manager.get_current_model()
