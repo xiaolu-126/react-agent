@@ -195,14 +195,13 @@ class ModelManager:
         Returns:
             BaseChatModel: DeepSeek 聊天模型实例
         """
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
+        from langchain_deepseek import ChatDeepSeek
+        return ChatDeepSeek(
             model=config.model_name,
             api_key=config.api_key,
             base_url=config.api_base,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
-            model_kwargs={"extra_body": {"reasoning_effort": "none"}},
         )
     
     def get_chat_model(self, model_type: Optional[ModelType] = None) -> BaseChatModel:
