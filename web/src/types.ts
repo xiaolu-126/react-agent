@@ -82,6 +82,17 @@ export interface KnowledgeSearchResponse {
   total: number;
 }
 
+export interface KnowledgeDocumentInfo {
+  id: string;
+  content: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface KnowledgeDocumentListResponse {
+  documents: KnowledgeDocumentInfo[];
+  total: number;
+}
+
 export interface CustomPromptInfo {
   name: string;
   description: string;

@@ -13,10 +13,11 @@ import {
   Eye,
   Loader2,
   RefreshCw,
+  Settings2,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../api';
-import type { SystemPromptContent, CustomPromptInfo, KnowledgeStatus, KnowledgeSearchResult } from '../types';
+import type { SystemPromptContent, CustomPromptInfo, KnowledgeStatus, KnowledgeSearchResult, KnowledgeDocumentInfo } from '../types';
 
 type Tab = 'models' | 'prompts' | 'custom' | 'knowledge';
 
@@ -90,43 +91,147 @@ export default function SettingsPanel() {
 
 /* ---------- Model Manager ---------- */
 
+const BUILTIN_MODELS = ['openai', 'anthropic', 'dashscope', 'qianfan', 'deepseek'];
+
 function ModelManager() {
-  const { models, currentModel, switchModel, fetchModels } = useStore();
+  const { models, currentModel, switchModel, fetchModels, addModel, deleteModel } = useStore();
+  const [showAdd, setShowAdd] = useState(false);
+  const [addData, setAddData] = useState({ model_type: '', model_name: '', api_key: '', api_base: '' });
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
 
+  const handleAdd = async () => {
+    if (!addData.model_type.trim() || !addData.model_name.trim() || !addData.api_key.trim()) return;
+    setAdding(true);
+    try {
+      await addModel({
+        model_type: addData.model_type.trim(),
+        model_name: addData.model_name.trim(),
+        api_key: addData.api_key.trim(),
+        api_base: addData.api_base.trim() || undefined,
+      });
+      setShowAdd(false);
+      setAddData({ model_type: '', model_name: '', api_key: '', api_base: '' });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDelete = async (name: string) => {
+    await deleteModel(name);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-[var(--text-primary)]">可用模型</h3>
-        <button onClick={fetchModels} className="btn-ghost text-xs flex items-center gap-1.5">
-          <RefreshCw size={14} />
-          刷新
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowAdd(!showAdd)} className="btn-ghost text-xs flex items-center gap-1.5">
+            <Plus size={14} />
+            添加
+          </button>
+          <button onClick={fetchModels} className="btn-ghost text-xs flex items-center gap-1.5">
+            <RefreshCw size={14} />
+            刷新
+          </button>
+        </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+      {showAdd && (
+        <div className="border border-[var(--border-color)] rounded-xl p-4 mb-4 space-y-3 animate-fade-in bg-[var(--bg-secondary)]/30">
+          <h4 className="text-xs font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+            <Settings2 size={13} />
+            添加自定义模型（OpenAI 兼容）
+          </h4>
+          <input
+            value={addData.model_type}
+            onChange={(e) => setAddData((p) => ({ ...p, model_type: e.target.value }))}
+            placeholder="模型标识（如 my-model，需唯一）"
+            className="input-field text-sm"
+          />
+          <input
+            value={addData.model_name}
+            onChange={(e) => setAddData((p) => ({ ...p, model_name: e.target.value }))}
+            placeholder="模型名称（如 gpt-4o-mini）"
+            className="input-field text-sm"
+          />
+          <input
+            value={addData.api_key}
+            onChange={(e) => setAddData((p) => ({ ...p, api_key: e.target.value }))}
+            placeholder="API 密钥"
+            type="password"
+            className="input-field text-sm"
+          />
+          <input
+            value={addData.api_base}
+            onChange={(e) => setAddData((p) => ({ ...p, api_base: e.target.value }))}
+            placeholder="API 基础 URL（可选，默认使用 OpenAI）"
+            className="input-field text-sm"
+          />
+          <div className="flex gap-2">
+            <button onClick={() => setShowAdd(false)} className="btn-ghost text-sm flex-1">
+              取消
+            </button>
+            <button
+              onClick={handleAdd}
+              disabled={adding || !addData.model_type || !addData.model_name || !addData.api_key}
+              className="btn-primary text-sm flex-1 flex items-center justify-center gap-1.5"
+            >
+              {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              添加
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
         {models.map((model) => (
-          <button
+          <div
             key={model.name}
-            onClick={() => switchModel(model.name)}
-            className={`rounded-xl p-4 text-left transition-all border ${
+            className={`rounded-xl p-3 transition-all border ${
               model.is_current
                 ? 'border-[var(--accent)] bg-[var(--accent)]/5'
-                : 'border-[var(--border-color)] bg-[var(--bg-secondary)]/30 hover:bg-white/5'
+                : 'border-[var(--border-color)] bg-[var(--bg-secondary)]/30'
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-[var(--text-primary)]">
-                {model.display_name}
-              </span>
-              {model.is_current && (
-                <CheckCircle2 size={16} className="text-[var(--accent-hover)]" />
-              )}
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-medium text-[var(--text-primary)]">
+                    {model.display_name}
+                  </span>
+                  {model.is_current && (
+                    <CheckCircle2 size={14} className="text-[var(--accent-hover)] shrink-0" />
+                  )}
+                  <span className={`tag text-xs ${BUILTIN_MODELS.includes(model.name) ? 'tag-blue' : 'tag-amber'}`}>
+                    {BUILTIN_MODELS.includes(model.name) ? '内置' : '自定义'}
+                  </span>
+                </div>
+                <span className="text-xs text-[var(--text-muted)]">{model.name}</span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 ml-2">
+                {!model.is_current && (
+                  <button
+                    onClick={() => switchModel(model.name)}
+                    className="btn-ghost text-xs !py-1 !px-2"
+                  >
+                    切换
+                  </button>
+                )}
+                {!BUILTIN_MODELS.includes(model.name) && (
+                  <button
+                    onClick={() => handleDelete(model.name)}
+                    className="btn-ghost text-xs !py-1 !px-2 text-red-400 hover:text-red-300"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
             </div>
-            <span className="tag tag-blue text-xs">{model.name}</span>
-          </button>
+          </div>
         ))}
       </div>
     </div>
@@ -370,6 +475,12 @@ function KnowledgePanel() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [documents, setDocuments] = useState<KnowledgeDocumentInfo[]>([]);
+  const [docTotal, setDocTotal] = useState(0);
+  const [docLoading, setDocLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+
   const fetchStatus = useCallback(async () => {
     setLoading(true);
     try {
@@ -382,9 +493,23 @@ function KnowledgePanel() {
     }
   }, []);
 
+  const fetchDocuments = useCallback(async () => {
+    setDocLoading(true);
+    try {
+      const res = await api.getKnowledgeDocuments(100, 0);
+      setDocuments(res.documents);
+      setDocTotal(res.total);
+    } catch {
+      // silent
+    } finally {
+      setDocLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
-  }, [fetchStatus]);
+    fetchDocuments();
+  }, [fetchStatus, fetchDocuments]);
 
   const doSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -420,10 +545,40 @@ function KnowledgePanel() {
       const res = await api.uploadDocument(file);
       setUploadResult(`上传成功: ${res.file_name} (${res.chunk_count} 个分块)`);
       fetchStatus();
+      fetchDocuments();
     } catch (e) {
       setUploadResult(`上传失败: ${(e as Error).message}`);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDelete = async (docId: string) => {
+    setDeletingId(docId);
+    try {
+      await api.deleteKnowledgeDocument(docId);
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+      setDocTotal((prev) => prev - 1);
+      fetchStatus();
+    } catch {
+      // silent
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClear = async () => {
+    if (!window.confirm('确定要清空整个知识库吗？此操作不可恢复。')) return;
+    setClearing(true);
+    try {
+      await api.clearKnowledgeBase();
+      setDocuments([]);
+      setDocTotal(0);
+      fetchStatus();
+    } catch {
+      // silent
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -498,6 +653,78 @@ function KnowledgePanel() {
             {uploadResult.includes('失败') ? <Trash2 size={12} /> : <CheckCircle2 size={12} />}
             {uploadResult}
           </div>
+        )}
+      </div>
+
+      {/* Document List */}
+      <div className="border border-[var(--border-color)] rounded-xl p-4 bg-[var(--bg-secondary)]/20">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+            <Database size={16} className="text-[var(--accent-hover)]" />
+            文档列表
+            {docTotal > 0 && (
+              <span className="text-[10px] text-[var(--text-muted)] font-normal">共 {docTotal} 个分块</span>
+            )}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button onClick={fetchDocuments} className="btn-ghost text-xs flex items-center gap-1">
+              <RefreshCw size={12} className={docLoading ? 'animate-spin' : ''} />
+              刷新
+            </button>
+            {docTotal > 0 && (
+              <button onClick={handleClear} disabled={clearing} className="btn-ghost text-xs flex items-center gap-1 text-red-400 hover:text-red-300">
+                {clearing ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                清空
+              </button>
+            )}
+          </div>
+        </div>
+        {docLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
+          </div>
+        ) : docTotal === 0 ? (
+          <p className="text-xs text-[var(--text-muted)] py-4 text-center">知识库为空，上传文档后即可查看</p>
+        ) : (
+          <div className="space-y-2 max-h-[320px] overflow-y-auto">
+            {documents.map((doc) => (
+              <div key={doc.id} className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-color)] group">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-2 break-words">
+                      {doc.content || '(空)'}
+                    </p>
+                    {doc.metadata?.source && (
+                      <p className="text-[10px] text-[var(--text-muted)] mt-1 truncate">
+                        来源: {String(doc.metadata.source)}
+                      </p>
+                    )}
+                    {doc.metadata?.page && (
+                      <span className="text-[10px] text-[var(--text-muted)] mt-1 ml-2">
+                        第 {String(doc.metadata.page)} 页
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDelete(doc.id)}
+                    disabled={deletingId === doc.id}
+                    className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-all"
+                  >
+                    {deletingId === doc.id ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={12} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {docTotal > 100 && (
+          <p className="text-[10px] text-[var(--text-muted)] mt-2 text-center">
+            仅显示前 100 条，共 {docTotal} 条
+          </p>
         )}
       </div>
 

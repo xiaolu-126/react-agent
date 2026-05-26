@@ -56,6 +56,21 @@ class SwitchModelRequest(BaseModel):
     model_type: str = Field(..., description="模型类型: openai/anthropic/dashscope/qianfan/deepseek")
 
 
+class AddModelRequest(BaseModel):
+    """添加模型请求"""
+    model_type: str = Field(..., description="自定义模型标识（如 my-model）")
+    model_name: str = Field(..., description="模型名称（如 gpt-4o-mini）")
+    api_key: str = Field(..., description="API 密钥")
+    api_base: Optional[str] = Field(None, description="API 基础 URL（可选）")
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="温度参数")
+    max_tokens: int = Field(default=2048, ge=1, description="最大 Token 数")
+
+
+class DeleteModelRequest(BaseModel):
+    """删除模型请求"""
+    model_type: str = Field(..., description="要删除的模型类型")
+
+
 class SystemPromptInfo(BaseModel):
     """系统提示词信息"""
     name: str = Field(..., description="提示词名称")
@@ -129,6 +144,24 @@ class KnowledgeStatusResponse(BaseModel):
     collection_name: str = Field(..., description="集合名称")
     persist_directory: Optional[str] = Field(None, description="持久化目录")
     embedding_model: str = Field("未配置", description="嵌入模型")
+
+
+class KnowledgeDocumentInfo(BaseModel):
+    """知识库文档信息"""
+    id: str = Field(..., description="文档 ID")
+    content: str = Field(..., description="文档内容摘要")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+
+
+class KnowledgeDocumentListResponse(BaseModel):
+    """知识库文档列表响应"""
+    documents: List[KnowledgeDocumentInfo] = Field(..., description="文档列表")
+    total: int = Field(0, description="文档总数")
+
+
+class KnowledgeDeleteDocumentRequest(BaseModel):
+    """删除知识库文档请求"""
+    ids: List[str] = Field(..., description="要删除的文档 ID 列表")
 
 
 class CustomPromptInfo(BaseModel):

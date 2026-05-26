@@ -67,6 +67,8 @@ interface AppState {
   fetchModels: () => Promise<void>;
   fetchSystemPrompts: () => Promise<void>;
   switchModel: (name: string) => Promise<void>;
+  addModel: (data: { model_type: string; model_name: string; api_key: string; api_base?: string }) => Promise<void>;
+  deleteModel: (name: string) => Promise<void>;
   switchSystemPrompt: (name: string) => Promise<void>;
   setStreamerPanel: (open: boolean) => void;
   setSettingsPanel: (open: boolean) => void;
@@ -222,6 +224,26 @@ export const useStore = create<AppState>((set, get) => {
         set({ currentModel: name });
       } catch (e: unknown) {
         set({ error: `切换模型失败: ${e instanceof Error ? e.message : String(e)}` });
+      }
+    },
+
+    addModel: async (data) => {
+      try {
+        await api.addModel(data);
+        const res = await api.getModels();
+        set({ models: res.models, currentModel: res.current });
+      } catch (e: unknown) {
+        set({ error: `添加模型失败: ${e instanceof Error ? e.message : String(e)}` });
+      }
+    },
+
+    deleteModel: async (name) => {
+      try {
+        await api.deleteModel(name);
+        const res = await api.getModels();
+        set({ models: res.models, currentModel: res.current });
+      } catch (e: unknown) {
+        set({ error: `删除模型失败: ${e instanceof Error ? e.message : String(e)}` });
       }
     },
 

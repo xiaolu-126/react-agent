@@ -267,6 +267,32 @@ class KnowledgeBase:
         except Exception:
             return 0
 
+    def get_documents(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """
+        获取文档列表（分页）
+        
+        Args:
+            limit: 返回数量
+            offset: 偏移量
+            
+        Returns:
+            dict: {"documents": [...], "total": int, "ids": [...]}
+        """
+        try:
+            result = self.vectorstore._collection.get(limit=limit, offset=offset)
+            return {
+                "documents": result.get("documents", []),
+                "metadatas": result.get("metadatas", []),
+                "ids": result.get("ids", []),
+                "total": self.get_document_count(),
+            }
+        except Exception as e:
+            return {"documents": [], "metadatas": [], "ids": [], "total": 0}
+
     def clear(self) -> None:
         """清空知识库"""
         self.vectorstore.delete_collection()

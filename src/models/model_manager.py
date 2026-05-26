@@ -24,6 +24,7 @@ class ModelManager:
     - 通义千问 (DashScope)
     - 文心一言 (Qianfan)
     - DeepSeek
+    - 自定义模型（OpenAI 兼容接口）
     """
     
     def __init__(self, config: Optional[ModelManagerConfig] = None):
@@ -34,7 +35,10 @@ class ModelManager:
             config: 可选的模型管理器配置，如果不提供则从环境变量加载
         """
         self._chat_models: Dict[ModelType, BaseChatModel] = {}
+        self._custom_models: Dict[str, ModelConfig] = {}
+        self._custom_chat_models: Dict[str, BaseChatModel] = {}
         self._current_model: Optional[ModelType] = None
+        self._current_custom_model: Optional[str] = None
         self._config = config or self._load_config_from_env()
         self._initialize_models()
     
@@ -214,6 +218,18 @@ class ModelManager:
             ValueError: 如果模型类型未配置
         """
         target_type = model_type or self._current_model
+        if target_type is None:
+            raise ValueError("No model is currently set")
+        
+        if isinstance(target_type, str):
+            if target_type not in self._custom_chat_models:
+                if target_type not in self._custom_models:
+                    raise ValueError(f"Custom model '{target_type}' is not configured")
+                config = self._custom_models[target_type]
+                model = self._create_openai_model(config)
+                self._custom_chat_models[target_type] = model
+            return self._custom_chat_models[target_type]
+        
         if target_type not in self._chat_models:
             if target_type not in self._config.models:
                 raise ValueError(f"Model type {target_type} is not configured")
@@ -236,39 +252,160 @@ class ModelManager:
         
         return self._chat_models[target_type]
     
-    def set_current_model(self, model_type: ModelType):
+    def set_current_model(self, model_type: object):
         """
         设置当前使用的模型
         
         Args:
-            model_type: 要切换到的模型类型
+            model_type: 要切换到的模型类型（ModelType 枚举或自定义模型字符串）
             
         Raises:
             ValueError: 如果模型类型未配置
         """
-        if model_type not in self._config.models:
-            raise ValueError(f"Model type {model_type} is not configured")
-        
-        self._current_model = model_type
-        self.get_chat_model(model_type)
+        if isinstance(model_type, str):
+            if model_type not in self._custom_models:
+                raise ValueError(f"Custom model '{model_type}' is not configured")
+            self._current_custom_model = model_type
+            self._current_model = None
+            self.get_chat_model(model_type)
+        else:
+            if model_type not in self._config.models:
+                raise ValueError(f"Model type {model_type} is not configured")
+            self._current_model = model_type
+            self._current_custom_model = None
+            self.get_chat_model(model_type)
     
-    def get_current_model(self) -> ModelType:
+    def get_current_model(self) -> object:
         """
         获取当前使用的模型类型
         
         Returns:
-            ModelType: 当前模型类型
+            当前模型类型（ModelType 或自定义模型字符串）
         """
+        if self._current_custom_model:
+            return self._current_custom_model
         return self._current_model
     
-    def get_available_models(self) -> list[ModelType]:
+    def get_available_models(self) -> list:
         """
         获取所有可用的模型类型列表
         
         Returns:
-            list[ModelType]: 可用模型类型列表
+            可用模型类型列表（包含内置 ModelType 和自定义模型字符串）
         """
-        return list(self._config.models.keys())
+        models = list(self._config.models.keys())
+        models.extend(list(self._custom_models.keys()))
+        return models
+    
+    def get_model_display_name(self, model_key: object) -> str:
+        """
+        获取模型的显示名称
+        
+        Args:
+            model_key: 模型类型（ModelType 或字符串）
+            
+        Returns:
+            str: 显示名称
+        """
+        model_names = {
+            ModelType.OPENAI: "GPT-4 / GPT-3.5",
+            ModelType.ANTHROPIC: "Claude 3",
+            ModelType.DASHSCOPE: "通义千问",
+            ModelType.QIANFAN: "文心一言",
+            ModelType.DEEPSEEK: "DeepSeek",
+        }
+        
+        if isinstance(model_key, str):
+            config = self._custom_models.get(model_key)
+            if config:
+                return config.model_name
+            return model_key
+        
+        return model_names.get(model_key, model_key.value)
+    
+    def add_custom_model(
+        self,
+        model_type: str,
+        model_name: str,
+        api_key: str,
+        api_base: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ) -> str:
+        """
+        添加自定义模型（OpenAI 兼容接口）
+        
+        Args:
+            model_type: 模型类型标识（如 my-model）
+            model_name: 模型名称（如 gpt-4o-mini）
+            api_key: API 密钥
+            api_base: API 基础 URL
+            temperature: 温度参数
+            max_tokens: 最大 Token 数
+            
+        Returns:
+            str: 新添加的模型类型标识
+            
+        Raises:
+            ValueError: 如果模型标识已存在
+        """
+        if model_type in self._custom_models:
+            raise ValueError(f"自定义模型 '{model_type}' 已存在")
+        
+        try:
+            mt = ModelType(model_type)
+            if mt in self._config.models:
+                raise ValueError(f"模型标识 '{model_type}' 与内置模型冲突")
+        except ValueError:
+            pass
+        
+        config = ModelConfig(
+            model_type=ModelType.OPENAI,
+            model_name=model_name,
+            api_key=api_key,
+            api_base=api_base,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        self._custom_models[model_type] = config
+        return model_type
+    
+    def remove_model(self, model_type: str) -> bool:
+        """
+        删除指定模型
+        
+        Args:
+            model_type: 模型类型标识
+            
+        Returns:
+            bool: 是否成功删除
+            
+        Raises:
+            ValueError: 如果模型不存在或是当前正在使用的模型
+        """
+        if model_type in self._custom_models:
+            if model_type == self._current_custom_model:
+                raise ValueError("不能删除当前正在使用的模型")
+            del self._custom_models[model_type]
+            if model_type in self._custom_chat_models:
+                del self._custom_chat_models[model_type]
+            return True
+        
+        try:
+            mt = ModelType(model_type)
+        except ValueError:
+            raise ValueError(f"模型 '{model_type}' 不存在")
+        
+        if mt not in self._config.models:
+            raise ValueError(f"模型 '{model_type}' 不存在")
+        
+        if mt == self._current_model:
+            raise ValueError("不能删除当前正在使用的模型")
+        
+        del self._config.models[mt]
+        if mt in self._chat_models:
+            del self._chat_models[mt]
+        return True
     
     def update_model_config(self, model_type: ModelType, config: ModelConfig):
         """
