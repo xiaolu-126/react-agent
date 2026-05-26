@@ -195,8 +195,33 @@ class ModelManager:
         Returns:
             BaseChatModel: DeepSeek 聊天模型实例
         """
-        from langchain_deepseek import ChatDeepSeek
-        return ChatDeepSeek(
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import AIMessageChunk
+        from langchain_core.outputs import ChatGenerationChunk
+
+        class _DeepSeekChatModel(ChatOpenAI):
+            """处理 DeepSeek reasoning_content 的支持"""
+
+            def _convert_chunk_to_generation_chunk(
+                self,
+                chunk: dict,
+                default_chunk_class: type,
+                base_generation_info: dict | None,
+            ) -> ChatGenerationChunk | None:
+                generation_chunk = super()._convert_chunk_to_generation_chunk(
+                    chunk, default_chunk_class, base_generation_info,
+                )
+                choices = chunk.get("choices")
+                if choices and generation_chunk:
+                    top = choices[0]
+                    if isinstance(generation_chunk.message, AIMessageChunk):
+                        delta = top.get("delta", {})
+                        reasoning_content = delta.get("reasoning_content") or delta.get("reasoning")
+                        if reasoning_content is not None:
+                            generation_chunk.message.additional_kwargs["reasoning_content"] = reasoning_content
+                return generation_chunk
+
+        return _DeepSeekChatModel(
             model=config.model_name,
             api_key=config.api_key,
             base_url=config.api_base,
