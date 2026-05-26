@@ -140,6 +140,20 @@ export const api = {
   getKnowledgeDocuments: (limit = 50, offset = 0) =>
     request<KnowledgeDocumentListResponse>(`/knowledge/documents?limit=${limit}&offset=${offset}`),
 
+  getKnowledgeFiles: () =>
+    request<{ files: { source: string; chunk_count: number }[]; total: number }>('/knowledge/files'),
+
+  getKnowledgeFileDetail: (source: string) =>
+    request<{ source: string; chunk_count: number; documents: KnowledgeDocumentListResponse['documents'] }>(
+      `/knowledge/files/${encodeURIComponent(source)}`
+    ),
+
+  deleteKnowledgeFile: (source: string) =>
+    request<{ source: string; deleted_chunks: number; message: string }>(
+      `/knowledge/files/${encodeURIComponent(source)}`,
+      { method: 'DELETE' }
+    ),
+
   deleteKnowledgeDocument: (docId: string) =>
     request<{ message: string }>(`/knowledge/documents/${docId}`, {
       method: 'DELETE',

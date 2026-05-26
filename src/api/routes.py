@@ -516,6 +516,59 @@ async def knowledge_clear():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/knowledge/files", response_model=schemas.KnowledgeFileListResponse, summary="获取知识库文件列表")
+async def knowledge_files():
+    """获取按文件分组的文件列表"""
+    try:
+        kb = _get_knowledge_base()
+        files = kb.get_files()
+        file_list = [
+            schemas.KnowledgeFileInfo(source=f["source"], chunk_count=f["chunk_count"])
+            for f in files
+        ]
+        return schemas.KnowledgeFileListResponse(files=file_list, total=len(file_list))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/knowledge/files/{source}", response_model=schemas.KnowledgeFileDetailResponse, summary="获取文件文档块详情")
+async def knowledge_file_detail(source: str):
+    """获取指定文件的所有文档块"""
+    try:
+        kb = _get_knowledge_base()
+        result = kb.get_file_chunks(source)
+        documents = []
+        for i, doc_id in enumerate(result.get("ids", [])):
+            meta = (result.get("metadatas") or [{}] * len(result["ids"]))[i] or {}
+            documents.append(schemas.KnowledgeDocumentInfo(
+                id=doc_id,
+                content=(result.get("documents") or [""] * len(result["ids"]))[i],
+                metadata=meta,
+            ))
+        return schemas.KnowledgeFileDetailResponse(
+            source=source,
+            chunk_count=len(documents),
+            documents=documents,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/knowledge/files/{source}", response_model=schemas.KnowledgeDeleteFileResponse, summary="删除文件（所有文档块）")
+async def knowledge_delete_file(source: str):
+    """删除指定文件的所有文档块"""
+    try:
+        kb = _get_knowledge_base()
+        deleted = kb.delete_file(source)
+        return schemas.KnowledgeDeleteFileResponse(
+            source=source,
+            deleted_chunks=deleted,
+            message=f"文件 '{source}' 已删除，共删除 {deleted} 个文档块",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== 自定义提示词管理 API ====================
 
 @router.get("/custom-prompts", response_model=schemas.CustomPromptListResponse, summary="获取自定义提示词列表")

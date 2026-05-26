@@ -293,6 +293,74 @@ class KnowledgeBase:
         except Exception as e:
             return {"documents": [], "metadatas": [], "ids": [], "total": 0}
 
+    def get_files(self) -> list:
+        """获取按文件(source)分组的文件列表
+
+        Returns:
+            list[dict]: 每个文件包含 {source, chunk_count, documents, ids, metadatas}
+        """
+        try:
+            all_data = self.vectorstore._collection.get()
+            sources_map: dict = {}
+            for i, doc_id in enumerate(all_data.get("ids", [])):
+                meta = (all_data.get("metadatas") or [{}] * len(all_data["ids"]))[i] or {}
+                source = meta.get("source", "unknown")
+                if source not in sources_map:
+                    sources_map[source] = {"source": source, "chunks": [], "ids": [], "metadatas": []}
+                sources_map[source]["chunks"].append((all_data.get("documents") or [""] * len(all_data["ids"]))[i])
+                sources_map[source]["ids"].append(doc_id)
+                sources_map[source]["metadatas"].append(meta)
+
+            result = []
+            for source, info in sources_map.items():
+                result.append({
+                    "source": source,
+                    "chunk_count": len(info["chunks"]),
+                    "documents": info["chunks"],
+                    "ids": info["ids"],
+                    "metadatas": info["metadatas"],
+                })
+            return result
+        except Exception:
+            return []
+
+    def delete_file(self, source: str) -> int:
+        """删除指定 source 文件的所有文档块
+
+        Args:
+            source: 文件名（metadata.source）
+
+        Returns:
+            删除的文档块数量
+        """
+        try:
+            result = self.vectorstore._collection.get(where={"source": source})
+            ids = result.get("ids", [])
+            if ids:
+                self.vectorstore.delete(ids=ids)
+            return len(ids)
+        except Exception:
+            return 0
+
+    def get_file_chunks(self, source: str) -> dict:
+        """获取指定文件的所有文档块
+
+        Args:
+            source: 文件名（metadata.source）
+
+        Returns:
+            dict: {documents, ids, metadatas}
+        """
+        try:
+            result = self.vectorstore._collection.get(where={"source": source})
+            return {
+                "documents": result.get("documents", []),
+                "ids": result.get("ids", []),
+                "metadatas": result.get("metadatas", []),
+            }
+        except Exception:
+            return {"documents": [], "ids": [], "metadatas": []}
+
     def clear(self) -> None:
         """清空知识库"""
         self.vectorstore.delete_collection()

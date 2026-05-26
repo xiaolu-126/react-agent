@@ -164,6 +164,32 @@ class KnowledgeDeleteDocumentRequest(BaseModel):
     ids: List[str] = Field(..., description="要删除的文档 ID 列表")
 
 
+class KnowledgeFileInfo(BaseModel):
+    """知识库文件信息"""
+    source: str = Field(..., description="文件名")
+    chunk_count: int = Field(0, description="文档块数量")
+
+
+class KnowledgeFileListResponse(BaseModel):
+    """知识库文件列表响应"""
+    files: List[KnowledgeFileInfo] = Field(..., description="文件列表")
+    total: int = Field(0, description="文件总数")
+
+
+class KnowledgeFileDetailResponse(BaseModel):
+    """知识库文件详情响应"""
+    source: str = Field(..., description="文件名")
+    chunk_count: int = Field(0, description="文档块数量")
+    documents: List[KnowledgeDocumentInfo] = Field(..., description="文档块列表")
+
+
+class KnowledgeDeleteFileResponse(BaseModel):
+    """删除知识库文件响应"""
+    source: str = Field(..., description="文件名")
+    deleted_chunks: int = Field(0, description="删除的文档块数量")
+    message: str = Field(..., description="操作消息")
+
+
 class CustomPromptInfo(BaseModel):
     """自定义提示词信息"""
     name: str = Field(..., description="模板名称")
