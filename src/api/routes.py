@@ -83,7 +83,7 @@ async def chat_stream(request: schemas.ChatRequest):
     async def event_generator() -> AsyncGenerator[dict, None]:
         try:
             full_text = ""
-            async for chunk in agent.stream(
+            for chunk in agent.stream(
                 input=request.message,
                 streamer_name=request.streamer_name,
                 user_preferences=request.user_preferences,
@@ -139,7 +139,7 @@ async def generate_recommendation_stream(request: schemas.GenerateRequest):
     async def event_generator() -> AsyncGenerator[dict, None]:
         try:
             full_text = ""
-            async for chunk in agent.stream(
+            for chunk in agent.stream(
                 input=f"请推荐主播 {request.streamer_name}",
                 streamer_name=request.streamer_name,
                 user_preferences=request.preferences,
@@ -754,7 +754,7 @@ async def generate_from_template_stream(request: schemas.GeneratePromptRequest):
                 return
 
             full_text = ""
-            async for chunk in agent.stream(input=formatted):
+            for chunk in agent.stream(input=formatted):
                 full_text += chunk
                 yield {"event": "chunk", "data": chunk}
             yield {"event": "done", "data": full_text}
