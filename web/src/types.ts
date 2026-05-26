@@ -98,6 +98,7 @@ export interface CustomPromptInfo {
   description: string;
   category: string;
   input_variables: string[];
+  template?: string;
 }
 
 export interface Message {

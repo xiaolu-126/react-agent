@@ -535,6 +535,9 @@ function CustomPromptManager() {
   const [newVariables, setNewVariables] = useState('');
   const [creating, setCreating] = useState(false);
 
+  const [viewingPrompt, setViewingPrompt] = useState<CustomPromptInfo | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+
   const fetchPrompts = useCallback(async () => {
     setLoading(true);
     try {
@@ -632,6 +635,18 @@ function CustomPromptManager() {
     }
   };
 
+  const viewDetail = async (name: string) => {
+    setViewLoading(true);
+    try {
+      const data = await api.getCustomPromptDetail(name);
+      setViewingPrompt(data);
+    } catch {
+      // silent
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
   if (error) {
     return (
       <div className="text-sm text-[var(--text-muted)]">
@@ -724,6 +739,13 @@ function CustomPromptManager() {
                 </div>
                 {!BUILTIN_PROMPTS.includes(p.name) && (
                   <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button
+                      onClick={() => viewDetail(p.name)}
+                      disabled={viewLoading}
+                      className="btn-ghost text-[10px] !py-1 !px-1.5"
+                    >
+                      {viewLoading ? <Loader2 size={11} className="animate-spin" /> : <Eye size={11} />}
+                    </button>
                     <button onClick={() => editDetail(p)} className="btn-ghost text-[10px] !py-1 !px-1.5">
                       <Pencil size={11} />
                     </button>
@@ -812,6 +834,58 @@ function CustomPromptManager() {
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 保存
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Modal */}
+      {viewingPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setViewingPrompt(null)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative w-[640px] max-w-[92vw] max-h-[85vh] bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-2xl shadow-2xl flex flex-col animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)] shrink-0">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                  {viewingPrompt.name}
+                </h3>
+                {viewingPrompt.description && (
+                  <span className="text-xs text-[var(--text-muted)] truncate max-w-[300px]">
+                    {viewingPrompt.description}
+                  </span>
+                )}
+              </div>
+              <button onClick={() => setViewingPrompt(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-[var(--text-secondary)]">分类:</span>
+                <span className="tag text-xs">{viewingPrompt.category || 'default'}</span>
+                {viewingPrompt.input_variables.length > 0 && (
+                  <>
+                    <span className="text-xs text-[var(--text-secondary)] ml-2">变量:</span>
+                    {viewingPrompt.input_variables.map((v) => (
+                      <span key={v} className="text-[10px] text-[var(--cyan)] bg-[var(--cyan)]/10 px-1.5 py-0.5 rounded">
+                        {'{'}{v}{'}'}
+                      </span>
+                    ))}
+                  </>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">模板内容</label>
+                <pre className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap font-mono bg-[var(--bg-secondary)]/30 rounded-xl p-4 border border-[var(--border-color)] max-h-[50vh] overflow-y-auto">
+                  {viewingPrompt.template || '(无模板内容)'}
+                </pre>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-color)] shrink-0">
+              <button onClick={() => setViewingPrompt(null)} className="btn-ghost text-sm">关闭</button>
             </div>
           </div>
         </div>

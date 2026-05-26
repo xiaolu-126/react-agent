@@ -223,6 +223,7 @@ class CustomPromptInfo(BaseModel):
     description: str = Field(default="", description="描述")
     category: str = Field(default="custom", description="分类")
     input_variables: List[str] = Field(default_factory=list, description="输入变量")
+    template: str = Field(default="", description="模板内容")
 
 
 class CustomPromptListResponse(BaseModel):

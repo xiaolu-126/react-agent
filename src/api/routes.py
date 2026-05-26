@@ -639,15 +639,16 @@ async def get_custom_prompt(name: str):
     """获取指定自定义提示词模板的详情"""
     try:
         pm = _get_prompt_manager()
-        template = pm.get_template(name)
-        if not template:
+        data = pm.get_template_data(name)
+        if not data:
             raise HTTPException(status_code=404, detail=f"自定义提示词 '{name}' 不存在")
 
         return schemas.CustomPromptInfo(
-            name=template.name,
-            description=template.description or "",
-            category=template.category or "default",
-            input_variables=template.input_variables or [],
+            name=data.name,
+            description=data.description or "",
+            category=data.category or "default",
+            input_variables=data.input_variables or [],
+            template=data.template or "",
         )
     except HTTPException:
         raise

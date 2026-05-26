@@ -103,6 +103,9 @@ export const api = {
   getCustomPrompts: () =>
     request<{ prompts: CustomPromptInfo[] }>('/custom-prompts'),
 
+  getCustomPromptDetail: (name: string) =>
+    request<CustomPromptInfo>(`/custom-prompts/${name}`),
+
   createCustomPrompt: (data: { name: string; template: string; description?: string; category?: string; input_variables?: string[] }) =>
     request<{ message: string; name: string }>('/custom-prompts', {
       method: 'POST',
