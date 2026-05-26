@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 # 导入项目模块
 from src.agent.react_agent import ReActAgent
 from src.utils.config import get_config
+from src.utils.logger import setup_logging
 
 
 class ColorFormatter:
@@ -116,6 +117,7 @@ def cli():
 
     提供交互式聊天、文档管理和模型切换等功能。
     """
+    setup_logging()
     ensure_config()
     get_config()
 

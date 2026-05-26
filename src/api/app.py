@@ -14,10 +14,13 @@ else:
     load_dotenv()
 
 from .routes import router
+from src.utils.logger import setup_logging
 
 
 def create_app() -> FastAPI:
     """创建并配置 FastAPI 应用"""
+    logger = setup_logging()
+    logger.info("Starting AI Agent API server")
     app = FastAPI(
         title="AI Agent API",
         description="基于 LangGraph 的智能 Agent API，支持主播推荐、对话、知识库等功能",
