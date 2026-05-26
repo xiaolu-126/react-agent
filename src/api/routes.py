@@ -13,9 +13,12 @@ from src.agent.react_agent import ReActAgent
 from src.agent.system_prompt_manager import SystemPromptManager
 from src.agent.prompt_manager import PromptManager, PromptTemplate
 from src.tools.knowledge_base import KnowledgeBase
+from src.utils.logger import get_logger
 from . import schemas
 
 router = APIRouter()
+
+logger = get_logger("agent")
 
 
 def _get_agent() -> ReActAgent:
@@ -68,6 +71,7 @@ async def chat(request: schemas.ChatRequest):
         )
         return schemas.ChatResponse(reply=reply, conversation_id="default")
     except Exception as e:
+        logger.error("聊天接口异常: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -88,6 +92,7 @@ async def chat_stream(request: schemas.ChatRequest):
                 yield {"event": "chunk", "data": chunk}
             yield {"event": "done", "data": full_text}
         except Exception as e:
+            logger.error("流式聊天异常: %s", e, exc_info=True)
             yield {"event": "error", "data": str(e)}
 
     return EventSourceResponse(event_generator())

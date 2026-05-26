@@ -16,6 +16,9 @@ from src.agent.memory import ChatMemoryManager
 from src.agent.system_prompt_manager import SystemPromptManager
 from src.tools.knowledge_base import KnowledgeBase
 from src.tools.web_search import WebSearch, web_search
+from src.utils.logger import get_logger
+
+logger = get_logger("agent")
 
 
 class AgentState(TypedDict):
@@ -144,7 +147,7 @@ class ReActAgent:
         try:
             return self.system_prompt_manager.get_system_prompt(self.system_prompt_name)
         except (ValueError, FileNotFoundError) as e:
-            # 如果加载失败，返回默认提示词
+            logger.warning("系统提示词 '%s' 加载失败: %s，使用默认提示词", self.system_prompt_name, e)
             return f"""你是一个专业的主播推荐助手。你的任务是根据用户提供的主播昵称生成高质量的推荐理由。
 
 推荐理由应该包括：
@@ -199,20 +202,20 @@ class ReActAgent:
     
     def _action_node(self, state: AgentState) -> Dict[str, Any]:
         """工具调用节点
-        
+
         Args:
             state: 当前状态
-            
+
         Returns:
             更新后的状态
         """
         tool_node = ToolNode(self._tools)
         result = tool_node(state)
-        
+
         new_tool_calls = []
         if state["tool_calls"]:
             new_tool_calls.extend(state["tool_calls"])
-        
+
         messages = state["messages"]
         last_message = messages[-1]
         if hasattr(last_message, "tool_calls"):
@@ -222,6 +225,7 @@ class ReActAgent:
                     "args": tc["args"],
                     "id": tc["id"],
                 })
+                logger.info("工具调用 | name=%s | args=%s", tc["name"], json.dumps(tc["args"], ensure_ascii=False))
         
         return {
             "messages": result["messages"],
@@ -287,16 +291,17 @@ class ReActAgent:
         stream: bool = False,
     ) -> str:
         """运行 Agent
-        
+
         Args:
             input: 用户输入
             streamer_name: 主播名称
             user_preferences: 用户偏好
             stream: 是否使用流式输出
-            
+
         Returns:
             Agent 的回复
         """
+        logger.info("Agent 开始处理请求 | streamer=%s | input=%.80s", streamer_name or "N/A", input)
         initial_state: AgentState = {
             "messages": [],
             "input": input,
@@ -329,19 +334,21 @@ class ReActAgent:
                     output = msg.content
         
         self.memory_manager.add_ai_message(output)
+        logger.info("Agent 处理完成 | output_length=%d | output=%.120s", len(output), output)
         return output
     
     def stream(self, input: str, streamer_name: Optional[str] = None, user_preferences: Optional[str] = None):
         """流式输出接口
-        
+
         Args:
             input: 用户输入
             streamer_name: 主播名称
             user_preferences: 用户偏好
-            
+
         Yields:
             输出内容的块
         """
+        logger.info("Agent 流式处理开始 | streamer=%s | input=%.80s", streamer_name or "N/A", input)
         initial_state: AgentState = {
             "messages": [],
             "input": input,

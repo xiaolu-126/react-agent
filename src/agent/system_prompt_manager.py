@@ -3,6 +3,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, TypedDict
 import json
 
+from src.utils.logger import get_logger
+
+logger = get_logger("agent")
+
 
 class SystemPromptMeta(TypedDict):
     """系统提示词元数据类型"""
@@ -55,7 +59,7 @@ class SystemPromptManager:
                 with open(self.index_file, "r", encoding="utf-8") as f:
                     self.index = json.load(f)
             except Exception as e:
-                print(f"加载系统提示词索引失败: {e}")
+                logger.error("加载系统提示词索引失败: %s", e)
         
         # 如果索引为空，加载默认提示词
         if not self.index:
@@ -147,7 +151,7 @@ class SystemPromptManager:
             是否添加成功
         """
         if name in self.index:
-            print(f"系统提示词 '{name}' 已存在")
+            logger.warning("系统提示词 '%s' 已存在，添加失败", name)
             return False
         
         file_name = f"{name}.md"
@@ -182,7 +186,7 @@ class SystemPromptManager:
             是否编辑成功
         """
         if name not in self.index:
-            print(f"系统提示词 '{name}' 不存在")
+            logger.warning("系统提示词 '%s' 不存在，编辑失败", name)
             return False
         
         meta = self.index[name]
@@ -213,11 +217,11 @@ class SystemPromptManager:
         """
         default_names = ["streamer_recommender", "general_assistant", "code_expert"]
         if name in default_names:
-            print(f"不能删除预设系统提示词 '{name}'")
+            logger.warning("不能删除预设系统提示词 '%s'", name)
             return False
-        
+
         if name not in self.index:
-            print(f"系统提示词 '{name}' 不存在")
+            logger.warning("系统提示词 '%s' 不存在，删除失败", name)
             return False
         
         # 删除对应的 .md 文件

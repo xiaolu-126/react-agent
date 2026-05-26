@@ -6,6 +6,11 @@ from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
 
+from src.utils.logger import get_logger
+
+logger = get_logger("agent")
+
+
 class PromptTemplateData(BaseModel):
     """提示词模板数据模型"""
     name: str = Field(..., description="模板名称")
@@ -110,7 +115,7 @@ class PromptManager:
                     for name, prompt_data in data.items():
                         self.templates[name] = PromptTemplateData(**prompt_data)
             except Exception as e:
-                print(f"加载自定义提示词失败: {e}")
+                logger.error("加载自定义提示词失败: %s", e)
     
     def _save_custom_prompts(self) -> None:
         """保存自定义提示词模板"""
@@ -195,7 +200,7 @@ class PromptManager:
             是否添加成功
         """
         if name in self.templates:
-            print(f"模板 {name} 已存在，请使用 edit_template 修改")
+            logger.warning("模板 %s 已存在，请使用 edit_template 修改", name)
             return False
         
         if input_variables is None:
@@ -234,7 +239,7 @@ class PromptManager:
             是否编辑成功
         """
         if name not in self.templates:
-            print(f"模板 {name} 不存在")
+            logger.warning("模板 %s 不存在，编辑失败", name)
             return False
         
         prompt_data = self.templates[name]
@@ -267,11 +272,11 @@ class PromptManager:
             是否删除成功
         """
         if name in self._get_default_template_names():
-            print(f"不能删除预设模板 {name}")
+            logger.warning("不能删除预设模板 %s", name)
             return False
-        
+
         if name not in self.templates:
-            print(f"模板 {name} 不存在")
+            logger.warning("模板 %s 不存在，删除失败", name)
             return False
         
         del self.templates[name]
@@ -296,7 +301,7 @@ class PromptManager:
         try:
             return template.format(**kwargs)
         except Exception as e:
-            print(f"格式化提示词失败: {e}")
+            logger.error("格式化提示词失败: %s", e)
             return None
     
     def debug_prompt(self, name: str, **kwargs: Any) -> Optional[Dict[str, Any]]:
@@ -348,11 +353,11 @@ class PromptManager:
                 elif format == "yaml":
                     yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
                 else:
-                    print(f"不支持的导出格式: {format}")
+                    logger.warning("不支持的导出格式: %s", format)
                     return False
             return True
         except Exception as e:
-            print(f"导出模板失败: {e}")
+            logger.error("导出模板失败: %s", e)
             return False
     
     def import_templates(self, file_path: Path, overwrite: bool = False) -> int:
@@ -367,29 +372,29 @@ class PromptManager:
             成功导入的模板数量
         """
         if not file_path.exists():
-            print(f"文件不存在: {file_path}")
+            logger.warning("文件不存在: %s", file_path)
             return 0
-        
+
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 if file_path.suffix.lower() in [".yaml", ".yml"]:
                     data = yaml.safe_load(f)
                 else:
                     data = json.load(f)
-            
+
             count = 0
             for name, prompt_data in data.items():
                 if name in self.templates and not overwrite:
-                    print(f"跳过已存在的模板: {name}")
+                    logger.info("跳过已存在的模板: %s", name)
                     continue
-                
+
                 self.templates[name] = PromptTemplateData(**prompt_data)
                 count += 1
-            
+
             self._save_custom_prompts()
             return count
         except Exception as e:
-            print(f"导入模板失败: {e}")
+            logger.error("导入模板失败: %s", e)
             return 0
     
     def _extract_variables(self, template: str) -> List[str]:
