@@ -662,7 +662,7 @@ async def create_custom_prompt(request: schemas.CreateCustomPromptRequest):
         pm = _get_prompt_manager()
         success = pm.add_template(
             name=request.name,
-            template_text=request.template,
+            template=request.template,
             description=request.description,
             category=request.category,
             input_variables=request.input_variables,
@@ -688,7 +688,7 @@ async def edit_custom_prompt(name: str, request: schemas.CreateCustomPromptReque
 
         pm.add_template(
             name=request.name,
-            template_text=request.template,
+            template=request.template,
             description=request.description,
             category=request.category,
             input_variables=request.input_variables,
