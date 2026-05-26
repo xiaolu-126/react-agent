@@ -806,8 +806,9 @@ function KnowledgePanel() {
     setExpandedLoading(true);
     try {
       const res = await api.getKnowledgeFileDetail(source);
-      setExpandedChunks(res.documents);
-    } catch {
+      setExpandedChunks(res.documents || []);
+    } catch (e) {
+      console.error('获取文件详情失败:', source, e);
       setExpandedChunks([]);
     } finally {
       setExpandedLoading(false);
@@ -1116,6 +1117,10 @@ function KnowledgePanel() {
                     {expandedLoading ? (
                       <div className="flex items-center justify-center py-4">
                         <Loader2 size={16} className="animate-spin text-[var(--text-muted)]" />
+                      </div>
+                    ) : expandedChunks.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-xs text-[var(--text-muted)]">
+                        该文件没有可显示的文档块内容
                       </div>
                     ) : (
                       <div className="divide-y divide-[var(--border-color)]">
