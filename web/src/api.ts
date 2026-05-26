@@ -82,6 +82,24 @@ export const api = {
   getSystemPromptContent: (name: string) =>
     request<SystemPromptContent>(`/system-prompts/${name}`),
 
+  getPromptTemplate: (name: string) =>
+    request<{
+      name: string;
+      description: string;
+      category: string;
+      input_variables: string[];
+      template_content: string;
+    }>(`/prompts/${name}`),
+
+  generateFromTemplateStream: (data: { template_name: string; variables: Record<string, string> }) => {
+    const url = `${BASE_URL}/prompts/generate/stream`;
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
   switchSystemPrompt: (promptName: string) =>
     request<{ name: string }>('/system-prompts/switch', {
       method: 'POST',
@@ -120,9 +138,12 @@ export const api = {
       body: JSON.stringify({ query, k }),
     }),
 
-  uploadDocument: async (file: File) => {
+  uploadDocument: async (file: File, metadata?: Record<string, string>) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (metadata && Object.keys(metadata).length > 0) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
     const res = await fetch(`${BASE_URL}/knowledge/upload`, {
       method: 'POST',
       body: formData,
@@ -136,6 +157,20 @@ export const api = {
 
   getKnowledgeDocuments: (limit = 50, offset = 0) =>
     request<KnowledgeDocumentListResponse>(`/knowledge/documents?limit=${limit}&offset=${offset}`),
+
+  getKnowledgeFiles: () =>
+    request<{ files: { source: string; chunk_count: number }[]; total: number }>('/knowledge/files'),
+
+  getKnowledgeFileDetail: (source: string) =>
+    request<{ source: string; chunk_count: number; documents: KnowledgeDocumentListResponse['documents'] }>(
+      `/knowledge/files/${encodeURIComponent(source)}`
+    ),
+
+  deleteKnowledgeFile: (source: string) =>
+    request<{ source: string; deleted_chunks: number; message: string }>(
+      `/knowledge/files/${encodeURIComponent(source)}`,
+      { method: 'DELETE' }
+    ),
 
   deleteKnowledgeDocument: (docId: string) =>
     request<{ message: string }>(`/knowledge/documents/${docId}`, {

@@ -421,8 +421,11 @@ async def knowledge_search(request: schemas.KnowledgeSearchRequest):
 
 
 @router.post("/knowledge/upload", response_model=schemas.KnowledgeUploadResponse, summary="上传文档到知识库")
-async def knowledge_upload(file: UploadFile = File(...)):
-    """上传文件到知识库（支持 pdf, txt, md, yaml 等格式）"""
+async def knowledge_upload(
+    file: UploadFile = File(...),
+    metadata: Optional[str] = Form(None),
+):
+    """上传文件到知识库（支持 pdf, txt, md, yaml 等格式），可附带元数据（JSON 字符串）"""
     try:
         if not file.filename:
             raise HTTPException(status_code=400, detail="文件名不能为空")
@@ -443,8 +446,17 @@ async def knowledge_upload(file: UploadFile = File(...)):
         with open(temp_path, "wb") as f:
             f.write(content)
 
+        parsed_metadata = None
+        if metadata:
+            try:
+                parsed_metadata = json.loads(metadata)
+                if not isinstance(parsed_metadata, dict):
+                    raise ValueError("metadata must be a JSON object")
+            except (json.JSONDecodeError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"元数据格式错误: {str(e)}")
+
         kb = _get_knowledge_base()
-        doc_ids = kb.add_document_from_path(str(temp_path))
+        doc_ids = kb.add_document_from_path(str(temp_path), metadata=parsed_metadata)
 
         return schemas.KnowledgeUploadResponse(
             file_name=file.filename,
@@ -500,6 +512,59 @@ async def knowledge_clear():
         kb = _get_knowledge_base()
         kb.clear()
         return {"message": "知识库已清空"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/knowledge/files", response_model=schemas.KnowledgeFileListResponse, summary="获取知识库文件列表")
+async def knowledge_files():
+    """获取按文件分组的文件列表"""
+    try:
+        kb = _get_knowledge_base()
+        files = kb.get_files()
+        file_list = [
+            schemas.KnowledgeFileInfo(source=f["source"], chunk_count=f["chunk_count"])
+            for f in files
+        ]
+        return schemas.KnowledgeFileListResponse(files=file_list, total=len(file_list))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/knowledge/files/{source}", response_model=schemas.KnowledgeFileDetailResponse, summary="获取文件文档块详情")
+async def knowledge_file_detail(source: str):
+    """获取指定文件的所有文档块"""
+    try:
+        kb = _get_knowledge_base()
+        result = kb.get_file_chunks(source)
+        documents = []
+        for i, doc_id in enumerate(result.get("ids", [])):
+            meta = (result.get("metadatas") or [{}] * len(result["ids"]))[i] or {}
+            documents.append(schemas.KnowledgeDocumentInfo(
+                id=doc_id,
+                content=(result.get("documents") or [""] * len(result["ids"]))[i],
+                metadata=meta,
+            ))
+        return schemas.KnowledgeFileDetailResponse(
+            source=source,
+            chunk_count=len(documents),
+            documents=documents,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/knowledge/files/{source}", response_model=schemas.KnowledgeDeleteFileResponse, summary="删除文件（所有文档块）")
+async def knowledge_delete_file(source: str):
+    """删除指定文件的所有文档块"""
+    try:
+        kb = _get_knowledge_base()
+        deleted = kb.delete_file(source)
+        return schemas.KnowledgeDeleteFileResponse(
+            source=source,
+            deleted_chunks=deleted,
+            message=f"文件 '{source}' 已删除，共删除 {deleted} 个文档块",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -629,6 +694,51 @@ async def format_prompt(request: schemas.FormatPromptRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/prompts/{name}", response_model=schemas.TemplateInfoResponse, summary="获取模板信息")
+async def get_prompt_template(name: str):
+    """获取指定模板的详细信息（变量列表、原始内容等）"""
+    try:
+        pm = _get_prompt_manager()
+        data = pm.get_template_data(name)
+        if not data:
+            raise HTTPException(status_code=404, detail=f"模板 '{name}' 不存在")
+        return schemas.TemplateInfoResponse(
+            name=data.name,
+            description=data.description or "",
+            category=data.category or "",
+            input_variables=data.input_variables or [],
+            template_content=data.template or "",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/prompts/generate/stream", summary="基于模板流式生成内容")
+async def generate_from_template_stream(request: schemas.GeneratePromptRequest):
+    """使用指定模板和变量值，流式生成内容"""
+    agent = _get_agent()
+    pm = _get_prompt_manager()
+
+    async def event_generator() -> AsyncGenerator[dict, None]:
+        try:
+            formatted = pm.format_prompt(request.template_name, **request.variables)
+            if not formatted:
+                yield {"event": "error", "data": f"模板 '{request.template_name}' 格式化失败"}
+                return
+
+            full_text = ""
+            async for chunk in agent.stream(input=formatted):
+                full_text += chunk
+                yield {"event": "chunk", "data": chunk}
+            yield {"event": "done", "data": full_text}
+        except Exception as e:
+            yield {"event": "error", "data": str(e)}
+
+    return EventSourceResponse(event_generator())
 
 
 # ==================== 状态信息 API ====================

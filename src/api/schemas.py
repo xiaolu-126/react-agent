@@ -23,6 +23,33 @@ class StreamEvent(BaseModel):
     data: str = Field("", description="事件数据")
 
 
+class TemplateInfoRequest(BaseModel):
+    """模板查询请求"""
+    name: str = Field(..., description="模板名称")
+
+
+class TemplateInfoResponse(BaseModel):
+    """模板信息响应"""
+    name: str = Field(..., description="模板名称")
+    description: str = Field(default="", description="模板描述")
+    category: str = Field(default="", description="模板分类")
+    input_variables: List[str] = Field(default_factory=list, description="输入变量列表")
+    template_content: str = Field(default="", description="模板原始内容")
+
+
+class GeneratePromptRequest(BaseModel):
+    """基于模板生成请求"""
+    template_name: str = Field(..., description="模板名称")
+    variables: Dict[str, str] = Field(default_factory=dict, description="模板变量值")
+
+
+class GeneratePromptResponse(BaseModel):
+    """基于模板生成响应"""
+    template_name: str = Field(..., description="模板名称")
+    result: str = Field(..., description="生成结果")
+    formatted_prompt: str = Field(default="", description="格式化后的完整提示词")
+
+
 class GenerateRequest(BaseModel):
     """生成推荐理由请求"""
     streamer_name: str = Field(..., description="主播名称", min_length=1)
@@ -162,6 +189,32 @@ class KnowledgeDocumentListResponse(BaseModel):
 class KnowledgeDeleteDocumentRequest(BaseModel):
     """删除知识库文档请求"""
     ids: List[str] = Field(..., description="要删除的文档 ID 列表")
+
+
+class KnowledgeFileInfo(BaseModel):
+    """知识库文件信息"""
+    source: str = Field(..., description="文件名")
+    chunk_count: int = Field(0, description="文档块数量")
+
+
+class KnowledgeFileListResponse(BaseModel):
+    """知识库文件列表响应"""
+    files: List[KnowledgeFileInfo] = Field(..., description="文件列表")
+    total: int = Field(0, description="文件总数")
+
+
+class KnowledgeFileDetailResponse(BaseModel):
+    """知识库文件详情响应"""
+    source: str = Field(..., description="文件名")
+    chunk_count: int = Field(0, description="文档块数量")
+    documents: List[KnowledgeDocumentInfo] = Field(..., description="文档块列表")
+
+
+class KnowledgeDeleteFileResponse(BaseModel):
+    """删除知识库文件响应"""
+    source: str = Field(..., description="文件名")
+    deleted_chunks: int = Field(0, description="删除的文档块数量")
+    message: str = Field(..., description="操作消息")
 
 
 class CustomPromptInfo(BaseModel):

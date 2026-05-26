@@ -16,6 +16,7 @@ import {
   Settings2,
   Save,
   Pencil,
+  ChevronRight,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../api';
@@ -602,12 +603,21 @@ function KnowledgePanel() {
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [metaEntries, setMetaEntries] = useState<{ key: string; value: string }[]>([]);
 
   const [documents, setDocuments] = useState<KnowledgeDocumentInfo[]>([]);
   const [docTotal, setDocTotal] = useState(0);
   const [docLoading, setDocLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+
+  const [files, setFiles] = useState<{ source: string; chunk_count: number }[]>([]);
+  const [filesTotal, setFilesTotal] = useState(0);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const [expandedChunks, setExpandedChunks] = useState<KnowledgeDocumentInfo[]>([]);
+  const [expandedLoading, setExpandedLoading] = useState(false);
+  const [deletingFile, setDeletingFile] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     setLoading(true);
@@ -634,10 +644,60 @@ function KnowledgePanel() {
     }
   }, []);
 
+  const fetchFiles = useCallback(async () => {
+    setFilesLoading(true);
+    try {
+      const res = await api.getKnowledgeFiles();
+      setFiles(res.files);
+      setFilesTotal(res.total);
+    } catch {
+      // silent
+    } finally {
+      setFilesLoading(false);
+    }
+  }, []);
+
+  const expandFile = async (source: string) => {
+    if (expandedFile === source) {
+      setExpandedFile(null);
+      setExpandedChunks([]);
+      return;
+    }
+    setExpandedFile(source);
+    setExpandedLoading(true);
+    try {
+      const res = await api.getKnowledgeFileDetail(source);
+      setExpandedChunks(res.documents);
+    } catch {
+      setExpandedChunks([]);
+    } finally {
+      setExpandedLoading(false);
+    }
+  };
+
+  const handleDeleteFile = async (source: string) => {
+    if (!window.confirm(`确定要删除文件 "${source}" 的所有文档块吗？`)) return;
+    setDeletingFile(source);
+    try {
+      await api.deleteKnowledgeFile(source);
+      if (expandedFile === source) {
+        setExpandedFile(null);
+        setExpandedChunks([]);
+      }
+      fetchFiles();
+      fetchStatus();
+    } catch {
+      // silent
+    } finally {
+      setDeletingFile(null);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchDocuments();
-  }, [fetchStatus, fetchDocuments]);
+    fetchFiles();
+  }, [fetchStatus, fetchDocuments, fetchFiles]);
 
   const doSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -670,8 +730,15 @@ function KnowledgePanel() {
     setUploading(true);
     setUploadResult(null);
     try {
-      const res = await api.uploadDocument(file);
+      const metaObj: Record<string, string> = {};
+      for (const entry of metaEntries) {
+        if (entry.key.trim()) {
+          metaObj[entry.key.trim()] = entry.value;
+        }
+      }
+      const res = await api.uploadDocument(file, metaObj);
       setUploadResult(`上传成功: ${res.file_name} (${res.chunk_count} 个分块)`);
+      setMetaEntries([]);
       fetchStatus();
       fetchDocuments();
     } catch (e) {
@@ -702,6 +769,10 @@ function KnowledgePanel() {
       await api.clearKnowledgeBase();
       setDocuments([]);
       setDocTotal(0);
+      setFiles([]);
+      setFilesTotal(0);
+      setExpandedFile(null);
+      setExpandedChunks([]);
       fetchStatus();
     } catch {
       // silent
@@ -776,6 +847,65 @@ function KnowledgePanel() {
           </p>
           <p className="text-xs text-[var(--text-muted)] mt-1">支持 PDF、TXT、MD、YAML、JSON、CSV 格式</p>
         </div>
+
+        {/* Metadata Editor */}
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs text-[var(--text-secondary)]">元数据（可选）</span>
+            <button
+              onClick={() => setMetaEntries((prev) => [...prev, { key: '', value: '' }])}
+              className="btn-ghost text-[10px] flex items-center gap-1 !py-0.5 !px-1.5"
+            >
+              <Plus size={10} />
+              添加字段
+            </button>
+          </div>
+          {metaEntries.length > 0 && (
+            <div className="space-y-1.5">
+              {metaEntries.map((entry, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <input
+                    value={entry.key}
+                    onChange={(e) =>
+                      setMetaEntries((prev) =>
+                        prev.map((m, j) => (j === i ? { ...m, key: e.target.value } : m))
+                      )
+                    }
+                    placeholder="字段名"
+                    className="input-field text-xs flex-1 min-w-0"
+                  />
+                  <input
+                    value={entry.value}
+                    onChange={(e) =>
+                      setMetaEntries((prev) =>
+                        prev.map((m, j) => (j === i ? { ...m, value: e.target.value } : m))
+                      )
+                    }
+                    placeholder="值"
+                    className="input-field text-xs flex-1 min-w-0"
+                  />
+                  <button
+                    onClick={() => setMetaEntries((prev) => prev.filter((_, j) => j !== i))}
+                    className="p-1 rounded hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 shrink-0"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {metaEntries.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {metaEntries
+                .filter((m) => m.key.trim())
+                .map((m, i) => (
+                  <span key={i} className="text-[10px] text-[var(--cyan)] bg-[var(--cyan)]/10 px-1.5 py-0.5 rounded">
+                    {m.key.trim()}: {m.value || '(空)'}
+                  </span>
+                ))}
+            </div>
+          )}
+        </div>
         {uploadResult && (
           <div className={`flex items-center gap-2 mt-3 text-xs ${uploadResult.includes('失败') ? 'text-red-400' : 'text-[var(--cyan)]'}`}>
             {uploadResult.includes('失败') ? <Trash2 size={12} /> : <CheckCircle2 size={12} />}
@@ -784,75 +914,110 @@ function KnowledgePanel() {
         )}
       </div>
 
-      {/* Document List */}
+      {/* File Management */}
       <div className="border border-[var(--border-color)] rounded-xl p-4 bg-[var(--bg-secondary)]/20">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
             <Database size={16} className="text-[var(--accent-hover)]" />
-            文档列表
-            {docTotal > 0 && (
-              <span className="text-[10px] text-[var(--text-muted)] font-normal">共 {docTotal} 个分块</span>
+            文件管理
+            {filesTotal > 0 && (
+              <span className="text-[10px] text-[var(--text-muted)] font-normal">共 {filesTotal} 个文件</span>
             )}
           </h3>
           <div className="flex items-center gap-2">
-            <button onClick={fetchDocuments} className="btn-ghost text-xs flex items-center gap-1">
-              <RefreshCw size={12} className={docLoading ? 'animate-spin' : ''} />
+            <button onClick={fetchFiles} className="btn-ghost text-xs flex items-center gap-1">
+              <RefreshCw size={12} className={filesLoading ? 'animate-spin' : ''} />
               刷新
             </button>
-            {docTotal > 0 && (
+            {filesTotal > 0 && (
               <button onClick={handleClear} disabled={clearing} className="btn-ghost text-xs flex items-center gap-1 text-red-400 hover:text-red-300">
                 {clearing ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                清空
+                清空全部
               </button>
             )}
           </div>
         </div>
-        {docLoading ? (
+        {filesLoading ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
           </div>
-        ) : docTotal === 0 ? (
+        ) : filesTotal === 0 ? (
           <p className="text-xs text-[var(--text-muted)] py-4 text-center">知识库为空，上传文档后即可查看</p>
         ) : (
-          <div className="space-y-2 max-h-[320px] overflow-y-auto">
-            {documents.map((doc) => (
-              <div key={doc.id} className="bg-[var(--bg-primary)] rounded-lg p-3 border border-[var(--border-color)] group">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-2 break-words">
-                      {doc.content || '(空)'}
-                    </p>
-                    {doc.metadata?.source && (
-                      <p className="text-[10px] text-[var(--text-muted)] mt-1 truncate">
-                        来源: {String(doc.metadata.source)}
-                      </p>
-                    )}
-                    {doc.metadata?.page && (
-                      <span className="text-[10px] text-[var(--text-muted)] mt-1 ml-2">
-                        第 {String(doc.metadata.page)} 页
-                      </span>
-                    )}
+          <div className="space-y-2">
+            {files.map((f) => (
+              <div key={f.source} className="border border-[var(--border-color)] rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0 flex-1" onClick={() => expandFile(f.source)}>
+                    <button
+                      className={`p-1 rounded transition-transform ${expandedFile === f.source ? 'rotate-90' : ''}`}
+                    >
+                      <ChevronRight size={14} className="text-[var(--text-muted)]" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">{f.source}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{f.chunk_count} 个文档块</p>
+                    </div>
                   </div>
                   <button
-                    onClick={() => handleDelete(doc.id)}
-                    disabled={deletingId === doc.id}
-                    className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-all"
+                    onClick={() => handleDeleteFile(f.source)}
+                    disabled={deletingFile === f.source}
+                    className="shrink-0 p-1.5 rounded-lg text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
                   >
-                    {deletingId === doc.id ? (
-                      <Loader2 size={12} className="animate-spin" />
+                    {deletingFile === f.source ? (
+                      <Loader2 size={14} className="animate-spin" />
                     ) : (
-                      <Trash2 size={12} />
+                      <Trash2 size={14} />
                     )}
                   </button>
                 </div>
+
+                {expandedFile === f.source && (
+                  <div className="border-t border-[var(--border-color)] animate-fade-in">
+                    {expandedLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 size={16} className="animate-spin text-[var(--text-muted)]" />
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-[var(--border-color)]">
+                        {expandedChunks.map((chunk) => (
+                          <div key={chunk.id} className="px-4 py-3 group hover:bg-[var(--bg-secondary)]/20">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-3 break-words">
+                                  {chunk.content || '(空)'}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1.5">
+                                  {chunk.metadata?.page && (
+                                    <span className="text-[10px] text-[var(--text-muted)]">第 {String(chunk.metadata.page)} 页</span>
+                                  )}
+                                  <span className="text-[10px] text-[var(--text-muted)] font-mono">ID: {chunk.id.slice(0, 8)}...</span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`确定要删除此文档块吗？`)) {
+                                    api.deleteKnowledgeDocument(chunk.id).then(() => {
+                                      setExpandedChunks((prev) => prev.filter((d) => d.id !== chunk.id));
+                                      fetchFiles();
+                                      fetchStatus();
+                                    });
+                                  }
+                                }}
+                                className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-all"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
-        )}
-        {docTotal > 100 && (
-          <p className="text-[10px] text-[var(--text-muted)] mt-2 text-center">
-            仅显示前 100 条，共 {docTotal} 条
-          </p>
         )}
       </div>
 
