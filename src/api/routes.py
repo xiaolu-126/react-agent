@@ -384,7 +384,42 @@ async def delete_system_prompt(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ==================== 知识库管理 API ====================
+@router.put("/custom-prompts/{name}", response_model=schemas.CustomPromptInfo, summary="编辑自定义提示词")
+async def edit_custom_prompt(name: str, request: schemas.EditCustomPromptRequest):
+    """编辑自定义提示词模板内容、描述、变量等"""
+    try:
+        pm = _get_prompt_manager()
+        template = pm.get_template(name)
+        if not template:
+            raise HTTPException(status_code=404, detail=f"自定义提示词 '{name}' 不存在")
+
+        if name in ["streamer_recommendation", "content_summary", "question_answering"]:
+            raise HTTPException(status_code=400, detail="内置模板不可编辑")
+
+        success = pm.edit_template(
+            name=name,
+            template=request.template,
+            input_variables=request.input_variables,
+            description=request.description,
+            category=request.category,
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail="编辑失败")
+
+        updated = pm.get_template(name)
+        return schemas.CustomPromptInfo(
+            name=updated.name,
+            description=updated.description or "",
+            category=updated.category or "default",
+            input_variables=updated.input_variables or [],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 自定义提示词格式化 API ====================
 
 @router.get("/knowledge/status", response_model=schemas.KnowledgeStatusResponse, summary="知识库状态")
 async def knowledge_status():
@@ -515,6 +550,8 @@ async def knowledge_clear():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ==================== 知识库管理 API ====================
 
 @router.get("/knowledge/files", response_model=schemas.KnowledgeFileListResponse, summary="获取知识库文件列表")
 async def knowledge_files():

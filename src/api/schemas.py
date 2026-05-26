@@ -239,6 +239,14 @@ class CreateCustomPromptRequest(BaseModel):
     input_variables: Optional[List[str]] = Field(None, description="输入变量，自动从模板提取")
 
 
+class EditCustomPromptRequest(BaseModel):
+    """编辑自定义提示词请求"""
+    template: Optional[str] = Field(None, description="模板内容")
+    input_variables: Optional[List[str]] = Field(None, description="输入变量列表")
+    description: Optional[str] = Field(None, description="模板描述")
+    category: Optional[str] = Field(None, description="模板分类")
+
+
 class FormatPromptRequest(BaseModel):
     """格式化提示词请求"""
     prompt_name: str = Field(..., description="提示词名称")
