@@ -24,7 +24,6 @@ class Config:
         self.project_root = Path(__file__).parent.parent.parent
         self.config_dir = self.project_root / "config"
         self.data_dir = self.project_root / "data"
-        self.logs_dir = self.project_root / "logs"
 
         # 确保必要的目录存在
         self._ensure_directories()
@@ -51,7 +50,6 @@ class Config:
         directories = [
             self.config_dir,
             self.data_dir,
-            self.logs_dir,
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
@@ -168,19 +166,6 @@ class Config:
     def agent_max_tokens(self) -> int:
         """Agent 最大 Token 数"""
         return int(os.getenv("AGENT_MAX_TOKENS", "2048"))
-
-    @property
-    def log_level(self) -> str:
-        """日志级别"""
-        return os.getenv("LOG_LEVEL", "INFO")
-
-    @property
-    def log_file(self) -> str:
-        """日志文件路径"""
-        path = os.getenv("LOG_FILE", "./logs/agent.log")
-        if not os.path.isabs(path):
-            path = str(self.project_root / path)
-        return path
 
     @property
     def prompts_dir(self) -> Path:
