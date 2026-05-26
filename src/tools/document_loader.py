@@ -9,6 +9,10 @@ from langchain_community.document_loaders import (
     UnstructuredMarkdownLoader,
 )
 
+from src.utils.logger import get_logger
+
+logger = get_logger("agent")
+
 
 class DocumentLoader:
     """文档加载器，支持多种格式文档的加载"""
@@ -48,7 +52,7 @@ class DocumentLoader:
                     docs = self.load_document(str(file_path))
                     documents.extend(docs)
                 except Exception as e:
-                    print(f"加载文件 {file_path} 失败: {e}")
+                    logger.error("加载文件 %s 失败: %s", file_path, e)
 
         return documents
 

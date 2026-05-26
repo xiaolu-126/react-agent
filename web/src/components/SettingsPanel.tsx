@@ -527,6 +527,14 @@ function CustomPromptManager() {
   const [editVariables, setEditVariables] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newTemplate, setNewTemplate] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [newVariables, setNewVariables] = useState('');
+  const [creating, setCreating] = useState(false);
+
   const fetchPrompts = useCallback(async () => {
     setLoading(true);
     try {
@@ -585,11 +593,39 @@ function CustomPromptManager() {
     }
   };
 
+  const createPrompt = async () => {
+    if (!newName.trim() || !newTemplate.trim()) return;
+    setCreating(true);
+    try {
+      const vars = newVariables
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+      await api.createCustomPrompt({
+        name: newName.trim(),
+        template: newTemplate.trim(),
+        description: newDesc.trim() || undefined,
+        category: newCategory.trim() || undefined,
+        input_variables: vars.length > 0 ? vars : undefined,
+      });
+      setShowCreate(false);
+      setNewName('');
+      setNewTemplate('');
+      setNewDesc('');
+      setNewCategory('');
+      setNewVariables('');
+      fetchPrompts();
+    } catch {
+      // silent
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const deletePrompt = async (name: string) => {
     if (!window.confirm(`确定要删除提示词 "${name}" 吗？`)) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/custom-prompts/${name}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Delete failed');
+      await api.deleteCustomPrompt(name);
       fetchPrompts();
     } catch {
       // silent
@@ -609,11 +645,68 @@ function CustomPromptManager() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-[var(--text-primary)]">自定义模板</h3>
-        <button onClick={fetchPrompts} className="btn-ghost text-xs flex items-center gap-1.5">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          刷新
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowCreate(!showCreate)} className="btn-ghost text-xs flex items-center gap-1.5">
+            <Plus size={14} />
+            新建
+          </button>
+          <button onClick={fetchPrompts} className="btn-ghost text-xs flex items-center gap-1.5">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            刷新
+          </button>
+        </div>
       </div>
+
+      {showCreate && (
+        <div className="border border-[var(--border-color)] rounded-xl p-4 mb-4 space-y-3 animate-fade-in bg-[var(--bg-secondary)]/30">
+          <h4 className="text-xs font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+            <Plus size={13} />
+            新建自定义提示词
+          </h4>
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="模板名称（唯一标识）"
+            className="input-field text-sm"
+          />
+          <input
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+            placeholder="描述（可选）"
+            className="input-field text-sm"
+          />
+          <input
+            value={newCategory}
+            onChange={(e) => setNewCategory(e.target.value)}
+            placeholder="分类（可选，如 recommendation / general / content）"
+            className="input-field text-sm"
+          />
+          <input
+            value={newVariables}
+            onChange={(e) => setNewVariables(e.target.value)}
+            placeholder="变量名（逗号分隔，可选）如: streamer_name, tags"
+            className="input-field text-sm"
+          />
+          <textarea
+            value={newTemplate}
+            onChange={(e) => setNewTemplate(e.target.value)}
+            placeholder="提示词模板内容（可使用 {变量名} 占位）"
+            rows={4}
+            className="input-field text-sm resize-none font-mono w-full"
+          />
+          <div className="flex gap-2">
+            <button onClick={() => setShowCreate(false)} className="btn-ghost text-sm flex-1">取消</button>
+            <button
+              onClick={createPrompt}
+              disabled={creating || !newName.trim() || !newTemplate.trim()}
+              className="btn-primary text-sm flex-1 flex items-center justify-center gap-1.5"
+            >
+              {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              创建
+            </button>
+          </div>
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 size={20} className="animate-spin text-[var(--text-muted)]" />
