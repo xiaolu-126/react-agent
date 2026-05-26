@@ -210,7 +210,11 @@ class ReActAgent:
             更新后的状态
         """
         tool_node = ToolNode(self._tools)
-        result = tool_node(state)
+        try:
+            result = tool_node.invoke(state)
+        except Exception as e:
+            logger.error("ToolNode.invoke 异常: %s", e, exc_info=True)
+            raise
 
         new_tool_calls = []
         if state["tool_calls"]:
