@@ -103,10 +103,21 @@ export const api = {
   getCustomPrompts: () =>
     request<{ prompts: CustomPromptInfo[] }>('/custom-prompts'),
 
+  createCustomPrompt: (data: { name: string; template: string; description?: string; category?: string; input_variables?: string[] }) =>
+    request<{ message: string; name: string }>('/custom-prompts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   editCustomPrompt: (name: string, data: { template?: string; input_variables?: string[]; description?: string; category?: string }) =>
     request<CustomPromptInfo>(`/custom-prompts/${name}`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+
+  deleteCustomPrompt: (name: string) =>
+    request<{ message: string }>(`/custom-prompts/${name}`, {
+      method: 'DELETE',
     }),
 
   switchSystemPrompt: (promptName: string) =>
