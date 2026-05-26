@@ -54,6 +54,8 @@ export default function ChatView() {
   const abortRef = useRef<AbortController | null>(null);
 
   // Dynamic template variables form
+  const [customPrompts, setCustomPrompts] = useState<{ name: string; description: string; input_variables: string[] }[]>([]);
+  const [selectedPromptName, setSelectedPromptName] = useState<string>('');
   const [templateInfo, setTemplateInfo] = useState<{
     name: string;
     description: string;
@@ -72,11 +74,22 @@ export default function ChatView() {
     scrollToBottom();
   }, [messages, streamingText, scrollToBottom]);
 
-  // Fetch template info when panel opens or prompt changes
+  // Fetch custom prompts when panel opens
   useEffect(() => {
     if (!streamerPanelOpen) return;
+    api.getCustomPrompts().then((data) => {
+      setCustomPrompts(data.prompts);
+      if (data.prompts.length > 0 && !selectedPromptName) {
+        setSelectedPromptName(data.prompts[0].name);
+      }
+    }).catch(() => {});
+  }, [streamerPanelOpen]);
+
+  // Fetch template info when selected prompt changes
+  useEffect(() => {
+    if (!selectedPromptName) return;
     setTemplateLoading(true);
-    api.getPromptTemplate(currentSystemPrompt)
+    api.getPromptTemplate(selectedPromptName)
       .then((info) => {
         setTemplateInfo(info);
         const init: Record<string, string> = {};
@@ -87,7 +100,7 @@ export default function ChatView() {
       })
       .catch(() => setTemplateInfo(null))
       .finally(() => setTemplateLoading(false));
-  }, [streamerPanelOpen, currentSystemPrompt]);
+  }, [selectedPromptName]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -364,10 +377,26 @@ export default function ChatView() {
           <div className="p-4 min-w-80">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles size={18} className="text-[var(--accent-hover)]" />
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                {templateInfo ? templateInfo.name : '模板生成'}
-              </h3>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">模板生成</h3>
             </div>
+
+            {/* Prompt selector */}
+            {customPrompts.length > 0 && (
+              <div className="mb-3">
+                <label className="block text-xs text-[var(--text-secondary)] mb-1.5">选择模板</label>
+                <select
+                  value={selectedPromptName}
+                  onChange={(e) => setSelectedPromptName(e.target.value)}
+                  className="input-field text-sm"
+                >
+                  {customPrompts.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name} {p.input_variables.length > 0 ? `(${p.input_variables.join(', ')})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {templateLoading ? (
               <div className="flex items-center justify-center py-6">
@@ -377,7 +406,7 @@ export default function ChatView() {
               <div className="space-y-3">
                 {templateInfo.input_variables.map((v) => (
                   <div key={v}>
-                    <label className="block text-xs text-[var(--text-secondary)] mb-1.5">{varToLabel(v)} *</label>
+                    <label className="block text-xs text-[var(--text-secondary)] mb-1.5">{varToLabel(v)}</label>
                     {v.includes('content') || v.includes('preference') || v.includes('question') || v.includes('context') ? (
                       <textarea
                         value={varValues[v] || ''}
@@ -414,7 +443,7 @@ export default function ChatView() {
               </div>
             ) : (
               <div className="text-xs text-[var(--text-muted)] py-4 text-center">
-                {templateInfo ? '当前提示词无变量输入' : '请在设置中选择一个提示词'}
+                {templateInfo ? '当前模板无变量输入' : '暂无可用模板'}
               </div>
             )}
           </div>
