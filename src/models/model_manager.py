@@ -197,7 +197,7 @@ class ModelManager:
         """
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import AIMessage, AIMessageChunk
-        from langchain_core.outputs import ChatGenerationChunk
+        from langchain_core.outputs import ChatGenerationChunk, ChatResult
         import openai
 
         class _DeepSeekChatModel(ChatOpenAI):
