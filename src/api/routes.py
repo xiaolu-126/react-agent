@@ -411,12 +411,13 @@ async def edit_custom_prompt(name: str, request: schemas.EditCustomPromptRequest
         if not success:
             raise HTTPException(status_code=500, detail="编辑失败")
 
-        updated = pm.get_template(name)
+        updated = pm.get_template_data(name)
         return schemas.CustomPromptInfo(
             name=updated.name,
             description=updated.description or "",
             category=updated.category or "default",
             input_variables=updated.input_variables or [],
+            template=updated.template or "",
         )
     except HTTPException:
         raise

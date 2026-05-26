@@ -283,21 +283,21 @@ class PromptManager:
         self._save_custom_prompts()
         return True
     
-    def format_prompt(self, name: str, **kwargs: Any) -> Optional[str]:
+    def format_prompt(self, template_name: str, **kwargs: Any) -> Optional[str]:
         """
         格式化提示词
-        
+
         Args:
-            name: 模板名称
+            template_name: 模板名称
             **kwargs: 模板变量值
-            
+
         Returns:
             格式化后的提示词，如果失败则返回 None
         """
-        template = self.get_template(name)
+        template = self.get_template(template_name)
         if template is None:
             return None
-        
+
         try:
             return template.format(**kwargs)
         except Exception as e:
