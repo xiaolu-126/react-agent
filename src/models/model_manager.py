@@ -195,8 +195,50 @@ class ModelManager:
         Returns:
             BaseChatModel: DeepSeek 聊天模型实例
         """
-        from langchain_deepseek import ChatDeepSeek
-        return ChatDeepSeek(
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import AIMessage, AIMessageChunk
+        from langchain_core.outputs import ChatGenerationChunk
+        import openai
+
+        class _DeepSeekChatModel(ChatOpenAI):
+            """处理 DeepSeek reasoning_content 的支持"""
+
+            def _convert_chunk_to_generation_chunk(
+                self,
+                chunk: dict,
+                default_chunk_class: type,
+                base_generation_info: dict | None,
+            ) -> ChatGenerationChunk | None:
+                generation_chunk = super()._convert_chunk_to_generation_chunk(
+                    chunk, default_chunk_class, base_generation_info,
+                )
+                choices = chunk.get("choices")
+                if choices and generation_chunk:
+                    top = choices[0]
+                    if isinstance(generation_chunk.message, AIMessageChunk):
+                        delta = top.get("delta", {})
+                        reasoning_content = delta.get("reasoning_content") or delta.get("reasoning")
+                        if reasoning_content is not None:
+                            generation_chunk.message.additional_kwargs["reasoning_content"] = reasoning_content
+                return generation_chunk
+
+            def _create_chat_result(
+                self,
+                response: dict | openai.BaseModel,
+                generation_info: dict | None = None,
+            ) -> ChatResult:
+                result = super()._create_chat_result(response, generation_info)
+                response_dict = response if isinstance(response, dict) else response.model_dump()
+                for i, choice in enumerate(response_dict.get("choices") or []):
+                    if i < len(result.generations):
+                        msg = result.generations[i].message
+                        raw_message = choice.get("message", {})
+                        reasoning = raw_message.get("reasoning_content") or raw_message.get("reasoning")
+                        if reasoning and isinstance(msg, AIMessage):
+                            msg.additional_kwargs["reasoning_content"] = reasoning
+                return result
+
+        return _DeepSeekChatModel(
             model=config.model_name,
             api_key=config.api_key,
             base_url=config.api_base,
