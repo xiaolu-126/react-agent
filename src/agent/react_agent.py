@@ -346,6 +346,9 @@ class ReActAgent:
             logger.warning("Agent 达到递归限制，基于已有信息生成回复")
             output = self._build_fallback_output(initial_state)
             last_ai_kwargs = {}
+
+        # 去重：如果输出内容重复出现两次完全相同的内容，只保留第一次
+        output = self._deduplicate_output(output)
         
         self.memory_manager.add_ai_message(output, additional_kwargs=last_ai_kwargs)
         logger.info("Agent 处理完成 | output_length=%d | output=%.120s", len(output), output)
@@ -392,7 +395,17 @@ class ReActAgent:
             yield fallback
 
         if full_output:
-            self.memory_manager.add_ai_message(full_output)
+            self.memory_manager.add_ai_message(self._deduplicate_output(full_output))
+
+    def _deduplicate_output(self, text: str) -> str:
+        """如果输出内容中存在完全相同的连续重复段落，只保留第一个"""
+        if not text:
+            return text
+        mid = len(text) // 2
+        if len(text) >= 40 and text[:mid] == text[mid:]:
+            logger.info("检测到输出重复，自动去重")
+            return text[:mid]
+        return text
 
     def _build_fallback_output(self, state: AgentState) -> str:
         """当 Agent 达到递归限制时生成降级回复"""
