@@ -346,7 +346,7 @@ class ReActAgent:
         """
         logger.info("Agent 开始处理请求 | streamer=%s | input=%.80s", streamer_name or "N/A", input)
         initial_state: AgentState = {
-            "messages": [],
+            "messages": self.memory_manager.get_chat_history(),
             "input": input,
             "streamer_name": streamer_name,
             "tools": self._tools,
@@ -417,7 +417,7 @@ class ReActAgent:
         """
         logger.info("Agent 流式处理开始 | streamer=%s | input=%.80s", streamer_name or "N/A", input)
         initial_state: AgentState = {
-            "messages": [],
+            "messages": self.memory_manager.get_chat_history(),
             "input": input,
             "streamer_name": streamer_name,
             "tools": self._tools,
