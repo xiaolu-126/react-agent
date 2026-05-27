@@ -69,13 +69,14 @@ class ChatMemoryManager:
         self.conversation_history.append(ConversationTurn(role="user", content=content))
         self._prune_if_needed()
 
-    def add_ai_message(self, content: str) -> None:
+    def add_ai_message(self, content: str, additional_kwargs: Optional[Dict[str, Any]] = None) -> None:
         """添加一条 AI 回复消息。
         
         Args:
             content: AI 生成的回复内容
+            additional_kwargs: 额外的消息元数据（如 reasoning_content）
         """
-        self.messages.append(AIMessage(content=content))
+        self.messages.append(AIMessage(content=content, additional_kwargs=additional_kwargs or {}))
         self.conversation_history.append(ConversationTurn(role="assistant", content=content))
         self._prune_if_needed()
 

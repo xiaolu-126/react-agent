@@ -1,10 +1,81 @@
 import os
-from typing import Dict, Optional
+import json
+from typing import Dict, Optional, Any, List
 from pathlib import Path
 from dotenv import load_dotenv
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.language_models import LanguageModelInput
 
 from .config import ModelType, ModelConfig, ModelManagerConfig
+
+from langchain_deepseek import ChatDeepSeek
+from src.utils.logger import get_logger
+
+_logger = get_logger("agent")
+
+# ─── DeepSeek reasoning_content 修复 ─────────────────────────────────────────
+# langchain_openai 的 _convert_message_to_dict 不会将 additional_kwargs 中的
+# reasoning_content 写入 API 请求字典。这里在模块加载时做 monkey-patch，
+# 全局确保所有 assistant 消息的 reasoning_content 不被丢失。
+import langchain_openai.chat_models.base as _lc_base
+from langchain_core.messages import AIMessage as _AIMessage
+
+_orig_convert_to_dict = _lc_base._convert_message_to_dict
+if not hasattr(_orig_convert_to_dict, '_ds_patched'):
+
+    def _patched_convert_message_to_dict(message, api="chat/completions"):
+        msg_dict = _orig_convert_to_dict(message, api)
+        if isinstance(message, _AIMessage) and "reasoning_content" in message.additional_kwargs:
+            if msg_dict.get("role") == "assistant":
+                msg_dict["reasoning_content"] = message.additional_kwargs["reasoning_content"]
+        return msg_dict
+    _patched_convert_message_to_dict._ds_patched = True
+    _lc_base._convert_message_to_dict = _patched_convert_message_to_dict
+    _logger.info("monkey-patch _convert_message_to_dict applied")
+
+_orig_convert_to_msg = _lc_base._convert_dict_to_message
+if not hasattr(_orig_convert_to_msg, '_ds_patched'):
+
+    def _patched_convert_dict_to_message(dct):
+        msg = _orig_convert_to_msg(dct)
+        if dct.get("role") == "assistant":
+            reasoning = dct.get("reasoning_content") or dct.get("reasoning")
+            if reasoning is not None and isinstance(msg, _AIMessage):
+                msg.additional_kwargs["reasoning_content"] = str(reasoning)
+        return msg
+    _patched_convert_dict_to_message._ds_patched = True
+    _lc_base._convert_dict_to_message = _patched_convert_dict_to_message
+    _logger.info("monkey-patch _convert_dict_to_message applied")
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class _FixedChatDeepSeek(ChatDeepSeek):
+
+    def _get_request_payload(
+        self,
+        input_: LanguageModelInput,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict:
+        input_messages = self._convert_input(input_).to_messages()
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+
+        rc_count = 0
+        for im, pm in zip(input_messages, payload.get("messages", [])):
+            if isinstance(im, AIMessage) and "reasoning_content" in im.additional_kwargs:
+                if pm.get("role") == "assistant":
+                    pm["reasoning_content"] = im.additional_kwargs["reasoning_content"]
+                    rc_count += 1
+
+        _logger.debug(
+            "_get_request_payload | msgs=%d | rc_injected=%d",
+            len(payload.get("messages", [])), rc_count,
+        )
+
+        return payload
+
 
 project_root = Path(__file__).parent.parent.parent
 env_path = project_root / "config" / ".env"
@@ -195,53 +266,10 @@ class ModelManager:
         Returns:
             BaseChatModel: DeepSeek 聊天模型实例
         """
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import AIMessage, AIMessageChunk
-        from langchain_core.outputs import ChatGenerationChunk, ChatResult
-        import openai
-
-        class _DeepSeekChatModel(ChatOpenAI):
-            """处理 DeepSeek reasoning_content 的支持"""
-
-            def _convert_chunk_to_generation_chunk(
-                self,
-                chunk: dict,
-                default_chunk_class: type,
-                base_generation_info: dict | None,
-            ) -> ChatGenerationChunk | None:
-                generation_chunk = super()._convert_chunk_to_generation_chunk(
-                    chunk, default_chunk_class, base_generation_info,
-                )
-                choices = chunk.get("choices")
-                if choices and generation_chunk:
-                    top = choices[0]
-                    if isinstance(generation_chunk.message, AIMessageChunk):
-                        delta = top.get("delta", {})
-                        reasoning_content = delta.get("reasoning_content") or delta.get("reasoning")
-                        if reasoning_content is not None:
-                            generation_chunk.message.additional_kwargs["reasoning_content"] = reasoning_content
-                return generation_chunk
-
-            def _create_chat_result(
-                self,
-                response: dict | openai.BaseModel,
-                generation_info: dict | None = None,
-            ) -> ChatResult:
-                result = super()._create_chat_result(response, generation_info)
-                response_dict = response if isinstance(response, dict) else response.model_dump()
-                for i, choice in enumerate(response_dict.get("choices") or []):
-                    if i < len(result.generations):
-                        msg = result.generations[i].message
-                        raw_message = choice.get("message", {})
-                        reasoning = raw_message.get("reasoning_content") or raw_message.get("reasoning")
-                        if reasoning and isinstance(msg, AIMessage):
-                            msg.additional_kwargs["reasoning_content"] = reasoning
-                return result
-
-        return _DeepSeekChatModel(
+        return _FixedChatDeepSeek(
             model=config.model_name,
             api_key=config.api_key,
-            base_url=config.api_base,
+            api_base=config.api_base or "https://api.deepseek.com/v1",
             temperature=config.temperature,
             max_tokens=config.max_tokens,
         )

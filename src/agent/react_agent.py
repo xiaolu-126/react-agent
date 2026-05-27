@@ -321,23 +321,27 @@ class ReActAgent:
         
         if stream:
             output = ""
+            last_ai_kwargs: dict = {}
             for chunk in self._compiled_graph.stream(initial_state, {"recursion_limit": self.max_iterations}):
                 for key, value in chunk.items():
                     if key == "agent" and "messages" in value:
                         for msg in value["messages"]:
                             if isinstance(msg, AIMessage) and msg.content:
                                 output += msg.content
+                                last_ai_kwargs = msg.additional_kwargs
                                 print(msg.content, end="", flush=True)
             print()
         else:
             result = self._compiled_graph.invoke(initial_state, {"recursion_limit": self.max_iterations})
             messages = result["messages"]
             output = ""
+            last_ai_kwargs: dict = {}
             for msg in messages:
                 if isinstance(msg, AIMessage) and msg.content:
                     output = msg.content
+                    last_ai_kwargs = msg.additional_kwargs
         
-        self.memory_manager.add_ai_message(output)
+        self.memory_manager.add_ai_message(output, additional_kwargs=last_ai_kwargs)
         logger.info("Agent 处理完成 | output_length=%d | output=%.120s", len(output), output)
         return output
     
@@ -365,13 +369,18 @@ class ReActAgent:
         }
         
         self.memory_manager.add_user_message(input)
-        
+
+        full_output = ""
         for chunk in self._compiled_graph.stream(initial_state, {"recursion_limit": self.max_iterations}):
             for key, value in chunk.items():
                 if key == "agent" and "messages" in value:
                     for msg in value["messages"]:
                         if isinstance(msg, AIMessage) and msg.content:
+                            full_output += msg.content
                             yield msg.content
+
+        if full_output:
+            self.memory_manager.add_ai_message(full_output)
     
     def get_conversation_history(self):
         """获取对话历史
