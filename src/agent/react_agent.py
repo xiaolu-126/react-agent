@@ -381,12 +381,12 @@ class ReActAgent:
                                     is_intermediate = hasattr(msg, "tool_calls") and msg.tool_calls
                                     if not is_intermediate:
                                         logger.info(
-                                            "非流式检测到 Agent 输出 | content_len=%d",
+                                            "流式检测到 Agent 输出 | content_len=%d",
                                             len(msg.content),
                                         )
-                                        output += msg.content
+                                        # 使用 = 而不是 +=，避免多个 AIMessage 内容累加导致重复
+                                        output = msg.content
                                         last_ai_kwargs = msg.additional_kwargs
-                                        print(msg.content, end="", flush=True)
                 print()
             else:
                 result = self._compiled_graph.invoke(initial_state, {"recursion_limit": self.max_iterations})
