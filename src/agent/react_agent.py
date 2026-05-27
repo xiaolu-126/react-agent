@@ -449,11 +449,10 @@ class ReActAgent:
                             if isinstance(msg, AIMessage) and msg.content:
                                 is_intermediate = hasattr(msg, "tool_calls") and msg.tool_calls
                                 if not is_intermediate:
-                                    before_len = len(full_output)
-                                    full_output += msg.content
+                                    # 使用 = 而不是 +=，避免多个 AIMessage 内容累加导致重复
+                                    full_output = msg.content
                                     logger.info(
-                                        "流式获取到 Agent 输出 | added_len=%d | total=%d",
-                                        len(full_output) - before_len,
+                                        "流式获取到 Agent 输出 | content_len=%d",
                                         len(full_output),
                                     )
             
