@@ -369,6 +369,10 @@ class ReActAgent:
                                 if isinstance(msg, AIMessage) and msg.content:
                                     is_intermediate = hasattr(msg, "tool_calls") and msg.tool_calls
                                     if not is_intermediate:
+                                        logger.info(
+                                            "非流式检测到 Agent 输出 | content_len=%d",
+                                            len(msg.content),
+                                        )
                                         output += msg.content
                                         last_ai_kwargs = msg.additional_kwargs
                                         print(msg.content, end="", flush=True)
@@ -380,7 +384,13 @@ class ReActAgent:
                 last_ai_kwargs: dict = {}
                 for msg in messages:
                     if isinstance(msg, AIMessage) and msg.content:
-                        output = msg.content
+                        has_tc = hasattr(msg, "tool_calls") and msg.tool_calls
+                        logger.info(
+                            "invoke 结果中的 AIMessage | content_len=%d | tool_calls=%s",
+                            len(msg.content), has_tc,
+                        )
+                        if not has_tc:
+                            output = msg.content
                         last_ai_kwargs = msg.additional_kwargs
         except GraphRecursionError:
             logger.warning("Agent 达到递归限制，基于已有信息生成回复")
@@ -389,6 +399,7 @@ class ReActAgent:
 
         # 去重：如果输出内容重复出现两次完全相同的内容，只保留第一次
         output = self._deduplicate_output(output)
+        output = self._truncate(output)
         
         self.memory_manager.add_ai_message(output, additional_kwargs=last_ai_kwargs)
         logger.info("Agent 处理完成 | output_length=%d | output=%.120s", len(output), output)
@@ -428,26 +439,80 @@ class ReActAgent:
                             if isinstance(msg, AIMessage) and msg.content:
                                 is_intermediate = hasattr(msg, "tool_calls") and msg.tool_calls
                                 if not is_intermediate:
+                                    before_len = len(full_output)
                                     full_output += msg.content
-                                    yield msg.content
+                                    logger.info(
+                                        "流式获取到 Agent 输出 | added_len=%d | total=%d | is_dup=%s",
+                                        len(full_output) - before_len,
+                                        len(full_output),
+                                        len(full_output) >= 20 and full_output[:len(full_output)//2].strip() == full_output[len(full_output)//2:].strip(),
+                                    )
+                                    deduped = self._deduplicate_output(full_output) if len(full_output) >= 20 else full_output
+                                    truncated = self._truncate(deduped)
+                                    yield truncated
         except GraphRecursionError:
             logger.warning("流式 Agent 达到递归限制")
             fallback = self._build_fallback_output(initial_state)
             full_output = fallback
-            yield fallback
+            yield self._truncate(fallback)
 
         if full_output:
-            self.memory_manager.add_ai_message(self._deduplicate_output(full_output))
+            final = self._deduplicate_output(full_output)
+            final = self._truncate(final)
+            self.memory_manager.add_ai_message(final)
+            if final != full_output:
+                logger.info("流式去重生效 | 原始=%d | 去重后=%d", len(full_output), len(final))
 
     def _deduplicate_output(self, text: str) -> str:
-        """如果输出内容中存在完全相同的连续重复段落，只保留第一个"""
-        if not text:
+        """检测并移除完全重复的输出（多策略）"""
+        if not text or len(text) < 20:
             return text
-        mid = len(text) // 2
-        if len(text) >= 40 and text[:mid] == text[mid:]:
-            logger.info("检测到输出重复，自动去重")
-            return text[:mid]
+        n = len(text)
+        mid = n // 2
+
+        # 策略1: 从中心点附近搜索第二个副本的起点
+        prefix_len = min(30, n // 3)
+        prefix = text[:prefix_len]
+        second_start = text.find(prefix, mid - prefix_len)
+        if 0 < second_start < n - prefix_len:
+            first_part = text[:second_start]
+            after = text[second_start:]
+            if after.startswith(first_part) or after.strip() == first_part.strip():
+                logger.info(
+                    "去重策略1生效 | first_len=%d | pos=%d | total=%d",
+                    len(first_part), second_start, n,
+                )
+                return first_part.rstrip()
+
+        # 策略2: 以中点为中心，正负100字符范围内尝试对齐
+        for offset in range(-100, 101):
+            split = mid + offset
+            if split < n // 3 or split > n * 2 // 3:
+                continue
+            first = text[:split]
+            second = text[split:]
+            min_len = min(len(first), len(second))
+            if min_len < 20:
+                continue
+            if first[:min_len].strip() == second[:min_len].strip():
+                trailing = second[min_len:].strip()
+                if not trailing:
+                    logger.info(
+                        "去重策略2生效 | first_len=%d | offset=%d | total=%d",
+                        len(first), offset, n,
+                    )
+                    return first.rstrip()
+
+        logger.info("去重未命中 | total_len=%d", n)
         return text
+
+    def _truncate(self, text: str, max_chars: int = 50) -> str:
+        """截断文本到指定字符数以内"""
+        if not text or len(text) <= max_chars:
+            return text
+        truncated = text[:max_chars]
+        logger.info("输出截断 | 原始=%d | 截断后=%d", len(text), len(truncated))
+        return truncated
 
     def _build_fallback_output(self, state: AgentState) -> str:
         """当 Agent 达到递归限制时生成降级回复"""

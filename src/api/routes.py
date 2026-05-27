@@ -97,7 +97,12 @@ async def chat_stream(request: schemas.ChatRequest):
             ):
                 full_text += chunk
                 yield {"event": "chunk", "data": chunk}
-            yield {"event": "done", "data": full_text}
+            # 安全网：最终输出再去重一次
+            from src.agent.react_agent import ReActAgent
+            deduped = agent._deduplicate_output(full_text) if hasattr(agent, '_deduplicate_output') else full_text
+            yield {"event": "done", "data": deduped}
+            if deduped != full_text:
+                logger.info("路由层流式去重生效 | 原始=%d | 去重后=%d", len(full_text), len(deduped))
         except GraphRecursionError as e:
             logger.error("流式聊天递归限制: %s", e)
             yield {"event": "error", "data": "信息处理较复杂，已达到处理上限，请稍后再试"}
@@ -162,7 +167,11 @@ async def generate_recommendation_stream(request: schemas.GenerateRequest):
             ):
                 full_text += chunk
                 yield {"event": "chunk", "data": chunk}
-            yield {"event": "done", "data": full_text}
+            # 安全网：最终输出再去重一次
+            deduped = agent._deduplicate_output(full_text) if hasattr(agent, '_deduplicate_output') else full_text
+            yield {"event": "done", "data": deduped}
+            if deduped != full_text:
+                logger.info("路由层生成流式去重生效 | 原始=%d | 去重后=%d", len(full_text), len(deduped))
         except GraphRecursionError as e:
             logger.error("流式生成推荐递归限制: %s", e)
             yield {"event": "error", "data": "信息处理较复杂，已达到处理上限，请稍后再试"}
@@ -776,7 +785,11 @@ async def generate_from_template_stream(request: schemas.GeneratePromptRequest):
             for chunk in agent.stream(input=formatted):
                 full_text += chunk
                 yield {"event": "chunk", "data": chunk}
-            yield {"event": "done", "data": full_text}
+            # 安全网：最终输出再去重一次
+            deduped = agent._deduplicate_output(full_text) if hasattr(agent, '_deduplicate_output') else full_text
+            yield {"event": "done", "data": deduped}
+            if deduped != full_text:
+                logger.info("路由层模板流式去重生效 | 原始=%d | 去重后=%d", len(full_text), len(deduped))
         except Exception as e:
             yield {"event": "error", "data": str(e)}
 
