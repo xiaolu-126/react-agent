@@ -1,23 +1,56 @@
 import os
-from typing import Dict, Optional, Any
+import json
+from typing import Dict, Optional, Any, List
 from pathlib import Path
 from dotenv import load_dotenv
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.language_models import LanguageModelInput
 
 from .config import ModelType, ModelConfig, ModelManagerConfig
 
 from langchain_deepseek import ChatDeepSeek
+from src.utils.logger import get_logger
+
+_logger = get_logger("agent")
+
+# ─── DeepSeek reasoning_content 修复 ─────────────────────────────────────────
+# langchain_openai 的 _convert_message_to_dict 不会将 additional_kwargs 中的
+# reasoning_content 写入 API 请求字典。这里在模块加载时做 monkey-patch，
+# 全局确保所有 assistant 消息的 reasoning_content 不被丢失。
+import langchain_openai.chat_models.base as _lc_base
+from langchain_core.messages import AIMessage as _AIMessage
+
+_orig_convert_to_dict = _lc_base._convert_message_to_dict
+if not hasattr(_orig_convert_to_dict, '_ds_patched'):
+
+    def _patched_convert_message_to_dict(message, api="chat/completions"):
+        msg_dict = _orig_convert_to_dict(message, api)
+        if isinstance(message, _AIMessage) and "reasoning_content" in message.additional_kwargs:
+            if msg_dict.get("role") == "assistant":
+                msg_dict["reasoning_content"] = message.additional_kwargs["reasoning_content"]
+        return msg_dict
+    _patched_convert_message_to_dict._ds_patched = True
+    _lc_base._convert_message_to_dict = _patched_convert_message_to_dict
+    _logger.info("monkey-patch _convert_message_to_dict applied")
+
+_orig_convert_to_msg = _lc_base._convert_dict_to_message
+if not hasattr(_orig_convert_to_msg, '_ds_patched'):
+
+    def _patched_convert_dict_to_message(dct):
+        msg = _orig_convert_to_msg(dct)
+        if dct.get("role") == "assistant":
+            reasoning = dct.get("reasoning_content") or dct.get("reasoning")
+            if reasoning is not None and isinstance(msg, _AIMessage):
+                msg.additional_kwargs["reasoning_content"] = str(reasoning)
+        return msg
+    _patched_convert_dict_to_message._ds_patched = True
+    _lc_base._convert_dict_to_message = _patched_convert_dict_to_message
+    _logger.info("monkey-patch _convert_dict_to_message applied")
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class _FixedChatDeepSeek(ChatDeepSeek):
-    """修复 ChatDeepSeek 在请求端不传递 reasoning_content 的问题。
-
-    ChatDeepSeek 只在响应端捕获 reasoning_content（存入 additional_kwargs），
-    但在请求端不会将其写回 API 请求体。这会导致多轮 LLM 调用时
-    DeepSeek 报 400 错误：reasoning_content must be passed back to the API。
-    """
 
     def _get_request_payload(
         self,
@@ -29,12 +62,20 @@ class _FixedChatDeepSeek(ChatDeepSeek):
         input_messages = self._convert_input(input_).to_messages()
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
 
+        rc_count = 0
         for im, pm in zip(input_messages, payload.get("messages", [])):
             if isinstance(im, AIMessage) and "reasoning_content" in im.additional_kwargs:
                 if pm.get("role") == "assistant":
                     pm["reasoning_content"] = im.additional_kwargs["reasoning_content"]
+                    rc_count += 1
+
+        _logger.debug(
+            "_get_request_payload | msgs=%d | rc_injected=%d",
+            len(payload.get("messages", [])), rc_count,
+        )
 
         return payload
+
 
 project_root = Path(__file__).parent.parent.parent
 env_path = project_root / "config" / ".env"
