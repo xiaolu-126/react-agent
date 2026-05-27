@@ -27,7 +27,7 @@ def _get_agent() -> ReActAgent:
     from src.agent.react_agent import ReActAgent
     global _agent_instance
     if "_agent_instance" not in globals() or globals()["_agent_instance"] is None:
-        globals()["_agent_instance"] = ReActAgent()
+        globals()["_agent_instance"] = ReActAgent(knowledge_base=_get_knowledge_base())
     return globals()["_agent_instance"]
 
 
