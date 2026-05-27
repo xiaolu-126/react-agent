@@ -9,6 +9,7 @@ from langchain_core.tools import tool
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import StateGraph, END, MessagesState
 from langgraph.prebuilt import ToolNode
+from langgraph.errors import GraphRecursionError
 
 from src.models.model_manager import ModelManager
 from src.agent.prompt_manager import PromptManager
@@ -65,7 +66,7 @@ class ReActAgent:
         web_search: Optional[WebSearch] = None,
         system_prompt_manager: Optional[SystemPromptManager] = None,
         system_prompt_name: str = "streamer_recommender",
-        max_iterations: int = 5,
+        max_iterations: int = 25,
     ):
         """初始化 ReAct Agent
         
@@ -318,28 +319,33 @@ class ReActAgent:
         }
         
         self.memory_manager.add_user_message(input)
-        
-        if stream:
-            output = ""
-            last_ai_kwargs: dict = {}
-            for chunk in self._compiled_graph.stream(initial_state, {"recursion_limit": self.max_iterations}):
-                for key, value in chunk.items():
-                    if key == "agent" and "messages" in value:
-                        for msg in value["messages"]:
-                            if isinstance(msg, AIMessage) and msg.content:
-                                output += msg.content
-                                last_ai_kwargs = msg.additional_kwargs
-                                print(msg.content, end="", flush=True)
-            print()
-        else:
-            result = self._compiled_graph.invoke(initial_state, {"recursion_limit": self.max_iterations})
-            messages = result["messages"]
-            output = ""
-            last_ai_kwargs: dict = {}
-            for msg in messages:
-                if isinstance(msg, AIMessage) and msg.content:
-                    output = msg.content
-                    last_ai_kwargs = msg.additional_kwargs
+
+        try:
+            if stream:
+                output = ""
+                last_ai_kwargs: dict = {}
+                for chunk in self._compiled_graph.stream(initial_state, {"recursion_limit": self.max_iterations}):
+                    for key, value in chunk.items():
+                        if key == "agent" and "messages" in value:
+                            for msg in value["messages"]:
+                                if isinstance(msg, AIMessage) and msg.content:
+                                    output += msg.content
+                                    last_ai_kwargs = msg.additional_kwargs
+                                    print(msg.content, end="", flush=True)
+                print()
+            else:
+                result = self._compiled_graph.invoke(initial_state, {"recursion_limit": self.max_iterations})
+                messages = result["messages"]
+                output = ""
+                last_ai_kwargs: dict = {}
+                for msg in messages:
+                    if isinstance(msg, AIMessage) and msg.content:
+                        output = msg.content
+                        last_ai_kwargs = msg.additional_kwargs
+        except GraphRecursionError:
+            logger.warning("Agent 达到递归限制，基于已有信息生成回复")
+            output = self._build_fallback_output(initial_state)
+            last_ai_kwargs = {}
         
         self.memory_manager.add_ai_message(output, additional_kwargs=last_ai_kwargs)
         logger.info("Agent 处理完成 | output_length=%d | output=%.120s", len(output), output)
@@ -368,20 +374,45 @@ class ReActAgent:
             "user_preferences": user_preferences,
         }
         
-        self.memory_manager.add_user_message(input)
+        try:
+            self.memory_manager.add_user_message(input)
 
-        full_output = ""
-        for chunk in self._compiled_graph.stream(initial_state, {"recursion_limit": self.max_iterations}):
-            for key, value in chunk.items():
-                if key == "agent" and "messages" in value:
-                    for msg in value["messages"]:
-                        if isinstance(msg, AIMessage) and msg.content:
-                            full_output += msg.content
-                            yield msg.content
+            full_output = ""
+            for chunk in self._compiled_graph.stream(initial_state, {"recursion_limit": self.max_iterations}):
+                for key, value in chunk.items():
+                    if key == "agent" and "messages" in value:
+                        for msg in value["messages"]:
+                            if isinstance(msg, AIMessage) and msg.content:
+                                full_output += msg.content
+                                yield msg.content
+        except GraphRecursionError:
+            logger.warning("流式 Agent 达到递归限制")
+            fallback = self._build_fallback_output(initial_state)
+            full_output = fallback
+            yield fallback
 
         if full_output:
             self.memory_manager.add_ai_message(full_output)
-    
+
+    def _build_fallback_output(self, state: AgentState) -> str:
+        """当 Agent 达到递归限制时生成降级回复"""
+        streamer = state.get("streamer_name", "") or ""
+        observations = state.get("observations", [])
+        tool_calls = state.get("tool_calls", [])
+
+        parts = []
+        if streamer:
+            parts.append(f"关于 {streamer}")
+        if observations:
+            parts.append(f"我已查阅了相关信息")
+        parts.append("由于信息处理较复杂，请稍后再试或换一种提问方式")
+
+        logger.info(
+            "fallback | streamer=%s | tool_calls=%d | observations=%d",
+            streamer, len(tool_calls), len(observations),
+        )
+        return "，".join(parts) + "。"
+
     def get_conversation_history(self):
         """获取对话历史
         

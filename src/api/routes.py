@@ -14,6 +14,7 @@ from src.agent.system_prompt_manager import SystemPromptManager
 from src.agent.prompt_manager import PromptManager, PromptTemplate
 from src.tools.knowledge_base import KnowledgeBase
 from src.utils.logger import get_logger
+from langgraph.errors import GraphRecursionError
 from . import schemas
 
 router = APIRouter()
@@ -70,6 +71,12 @@ async def chat(request: schemas.ChatRequest):
             stream=False,
         )
         return schemas.ChatResponse(reply=reply, conversation_id="default")
+    except GraphRecursionError as e:
+        logger.error("聊天接口递归限制: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="信息处理较复杂，已达到处理上限，请换一种提问方式或稍后再试",
+        )
     except Exception as e:
         logger.error("聊天接口异常: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -91,6 +98,9 @@ async def chat_stream(request: schemas.ChatRequest):
                 full_text += chunk
                 yield {"event": "chunk", "data": chunk}
             yield {"event": "done", "data": full_text}
+        except GraphRecursionError as e:
+            logger.error("流式聊天递归限制: %s", e)
+            yield {"event": "error", "data": "信息处理较复杂，已达到处理上限，请稍后再试"}
         except Exception as e:
             logger.error("流式聊天异常: %s", e, exc_info=True)
             yield {"event": "error", "data": str(e)}
@@ -127,6 +137,12 @@ async def generate_recommendation(request: schemas.GenerateRequest):
             recommendation=reply,
             sources=[],
         )
+    except GraphRecursionError as e:
+        logger.error("生成推荐递归限制: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="信息处理较复杂，已达到处理上限，请换一种提问方式或稍后再试",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -147,6 +163,9 @@ async def generate_recommendation_stream(request: schemas.GenerateRequest):
                 full_text += chunk
                 yield {"event": "chunk", "data": chunk}
             yield {"event": "done", "data": full_text}
+        except GraphRecursionError as e:
+            logger.error("流式生成推荐递归限制: %s", e)
+            yield {"event": "error", "data": "信息处理较复杂，已达到处理上限，请稍后再试"}
         except Exception as e:
             yield {"event": "error", "data": str(e)}
 
