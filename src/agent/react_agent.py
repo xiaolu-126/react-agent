@@ -367,9 +367,11 @@ class ReActAgent:
                         if key == "agent" and "messages" in value:
                             for msg in value["messages"]:
                                 if isinstance(msg, AIMessage) and msg.content:
-                                    output += msg.content
-                                    last_ai_kwargs = msg.additional_kwargs
-                                    print(msg.content, end="", flush=True)
+                                    is_intermediate = hasattr(msg, "tool_calls") and msg.tool_calls
+                                    if not is_intermediate:
+                                        output += msg.content
+                                        last_ai_kwargs = msg.additional_kwargs
+                                        print(msg.content, end="", flush=True)
                 print()
             else:
                 result = self._compiled_graph.invoke(initial_state, {"recursion_limit": self.max_iterations})
@@ -424,8 +426,10 @@ class ReActAgent:
                     if key == "agent" and "messages" in value:
                         for msg in value["messages"]:
                             if isinstance(msg, AIMessage) and msg.content:
-                                full_output += msg.content
-                                yield msg.content
+                                is_intermediate = hasattr(msg, "tool_calls") and msg.tool_calls
+                                if not is_intermediate:
+                                    full_output += msg.content
+                                    yield msg.content
         except GraphRecursionError:
             logger.warning("流式 Agent 达到递归限制")
             fallback = self._build_fallback_output(initial_state)
