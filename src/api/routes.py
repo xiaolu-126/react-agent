@@ -89,20 +89,15 @@ async def chat_stream(request: schemas.ChatRequest):
 
     async def event_generator() -> AsyncGenerator[dict, None]:
         try:
-            full_text = ""
-            for chunk in agent.stream(
+            # agent.stream() 已经处理好去重，只 yield 一次最终结果
+            for final_result in agent.stream(
                 input=request.message,
                 streamer_name=request.streamer_name,
                 user_preferences=request.user_preferences,
             ):
-                full_text += chunk
-                yield {"event": "chunk", "data": chunk}
-            # 安全网：最终输出再去重一次
-            from src.agent.react_agent import ReActAgent
-            deduped = agent._deduplicate_output(full_text) if hasattr(agent, '_deduplicate_output') else full_text
-            yield {"event": "done", "data": deduped}
-            if deduped != full_text:
-                logger.info("路由层流式去重生效 | 原始=%d | 去重后=%d", len(full_text), len(deduped))
+                # 只发送 done 事件，不发送 chunk 事件，避免重复
+                yield {"event": "done", "data": final_result}
+                logger.info("流式聊天完成 | content_len=%d", len(final_result))
         except GraphRecursionError as e:
             logger.error("流式聊天递归限制: %s", e)
             yield {"event": "error", "data": "信息处理较复杂，已达到处理上限，请稍后再试"}
@@ -159,19 +154,15 @@ async def generate_recommendation_stream(request: schemas.GenerateRequest):
 
     async def event_generator() -> AsyncGenerator[dict, None]:
         try:
-            full_text = ""
-            for chunk in agent.stream(
+            # agent.stream() 已经处理好去重，只 yield 一次最终结果
+            for final_result in agent.stream(
                 input=f"请推荐主播 {request.streamer_name}",
                 streamer_name=request.streamer_name,
                 user_preferences=request.preferences,
             ):
-                full_text += chunk
-                yield {"event": "chunk", "data": chunk}
-            # 安全网：最终输出再去重一次
-            deduped = agent._deduplicate_output(full_text) if hasattr(agent, '_deduplicate_output') else full_text
-            yield {"event": "done", "data": deduped}
-            if deduped != full_text:
-                logger.info("路由层生成流式去重生效 | 原始=%d | 去重后=%d", len(full_text), len(deduped))
+                # 只发送 done 事件，不发送 chunk 事件，避免重复
+                yield {"event": "done", "data": final_result}
+                logger.info("流式生成推荐完成 | content_len=%d", len(final_result))
         except GraphRecursionError as e:
             logger.error("流式生成推荐递归限制: %s", e)
             yield {"event": "error", "data": "信息处理较复杂，已达到处理上限，请稍后再试"}
@@ -781,15 +772,11 @@ async def generate_from_template_stream(request: schemas.GeneratePromptRequest):
                 yield {"event": "error", "data": f"模板 '{request.template_name}' 格式化失败"}
                 return
 
-            full_text = ""
-            for chunk in agent.stream(input=formatted):
-                full_text += chunk
-                yield {"event": "chunk", "data": chunk}
-            # 安全网：最终输出再去重一次
-            deduped = agent._deduplicate_output(full_text) if hasattr(agent, '_deduplicate_output') else full_text
-            yield {"event": "done", "data": deduped}
-            if deduped != full_text:
-                logger.info("路由层模板流式去重生效 | 原始=%d | 去重后=%d", len(full_text), len(deduped))
+            # agent.stream() 已经处理好去重，只 yield 一次最终结果
+            for final_result in agent.stream(input=formatted):
+                # 只发送 done 事件，不发送 chunk 事件，避免重复
+                yield {"event": "done", "data": final_result}
+                logger.info("模板流式生成完成 | content_len=%d", len(final_result))
         except Exception as e:
             yield {"event": "error", "data": str(e)}
 
