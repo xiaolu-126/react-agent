@@ -464,13 +464,13 @@ class ReActAgent:
             self.memory_manager.add_ai_message(fallback)
 
     def _deduplicate_output(self, text: str) -> str:
-        """检测并移除完全重复的输出（多策略）"""
+        """检测并移除完全重复的输出（通用多策略）"""
         if not text or len(text) < 20:
             return text
         n = len(text)
 
-        # 策略1: 搜索内容标记第二次出现（处理重复）
-        markers = ["🎙️", "主播", "推荐", "🎤", "推荐主播", "推荐理由", "岑先生", "Mr.岑"]
+        # 策略1: 搜索通用标记第二次出现（处理"🎙️ xxx 🎙️ xxx"这类重复）
+        markers = ["🎙️", "主播", "推荐", "🎤", "推荐主播", "推荐理由"]
         for marker in markers:
             first_pos = text.find(marker)
             if first_pos >= 0:
@@ -478,18 +478,33 @@ class ReActAgent:
                 if second_pos > first_pos:
                     candidate = text[:second_pos].strip()
                     after_second = text[second_pos:].strip()
-                    first_part = candidate
-                    # 检查second_pos之后的内容是否包含candidate（完全重复）
                     if after_second.startswith(candidate) or after_second == candidate or candidate in after_second:
                         logger.info(
                             "去重策略1（标记重复）生效 | marker=%s | first_len=%d | total=%d",
-                            marker, len(first_part), n,
+                            marker, len(candidate), n,
                         )
-                        return first_part
+                        return candidate
 
-        # 策略2: 从中心点附近搜索第二个副本的起点
+        # 策略2: 自动检测重复模式 - 搜索文本开头的单词/短语第二次出现
+        # 取开头的字符作为锚点，从中点开始搜索第二次出现
+        anchor_len = min(15, n // 4)
+        anchor = text[:anchor_len].strip()
+        if len(anchor) >= 5:
+            second_pos = text.find(anchor, anchor_len)
+            if second_pos > 0 and second_pos < n - anchor_len:
+                # 找到第二次出现，检查是否是完整重复
+                first_part = text[:second_pos].strip()
+                after_second = text[second_pos:].strip()
+                if after_second.startswith(first_part) or after_second == first_part:
+                    logger.info(
+                        "去重策略2（自动锚点）生效 | first_len=%d | pos=%d | total=%d",
+                        len(first_part), second_pos, n,
+                    )
+                    return first_part
+
+        # 策略3: 从中点附近搜索第二个副本的起点
         mid = n // 2
-        prefix_len = min(30, n // 3)
+        prefix_len = min(25, n // 3)
         prefix = text[:prefix_len]
         second_start = text.find(prefix, mid - prefix_len)
         if 0 < second_start < n - prefix_len:
@@ -497,13 +512,30 @@ class ReActAgent:
             after = text[second_start:]
             if after.startswith(first_part) or after.strip() == first_part.strip():
                 logger.info(
-                    "去重策略2（前缀匹配）生效 | first_len=%d | pos=%d | total=%d",
+                    "去重策略3（前缀匹配）生效 | first_len=%d | pos=%d | total=%d",
                     len(first_part), second_start, n,
                 )
                 return first_part.rstrip()
 
-        # 策略3: 扫描所有位置，找第一个内容块末尾
-        # 如果文本前半段和后半段高度相似（>80%），则去重
+        # 策略4: 检测文本是否由两个相同的部分组成
+        # 检查中点附近的分割点
+        for offset in range(-50, 51):
+            split = mid + offset
+            if split < n // 4 or split > n * 3 // 4:
+                continue
+            first = text[:split].strip()
+            second = text[split:].strip()
+            if len(first) < 20 or len(second) < 20:
+                continue
+            # 检查两个部分是否相同
+            if first == second or first == second[:len(first)] or second == first[:len(second)]:
+                logger.info(
+                    "去重策略4（中点分割）生效 | first_len=%d | offset=%d | total=%d",
+                    len(first), offset, n,
+                )
+                return first
+
+        # 策略5: 相似度检测 - 扫描所有位置
         quarter = n // 4
         for split in range(quarter, n - quarter):
             first = text[:split]
@@ -515,7 +547,7 @@ class ReActAgent:
                 similarity = sum(1 for a, b in zip(first[:check_len], second[:check_len]) if a == b) / check_len
                 if similarity > 0.8:
                     logger.info(
-                        "去重策略3（相似度检测）生效 | first_len=%d | similarity=%.2f | total=%d",
+                        "去重策略5（相似度检测）生效 | first_len=%d | similarity=%.2f | total=%d",
                         len(first), similarity, n,
                     )
                     return first.rstrip()
