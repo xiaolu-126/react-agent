@@ -175,10 +175,25 @@ class ReActAgent:
         
         if state["messages"]:
             messages.extend(state["messages"])
+            logger.info("Agent 继续推理 | 历史消息数=%d", len(state["messages"]))
         else:
             messages.append(HumanMessage(content=state["input"]))
+            logger.info("Agent 开始推理 | input=%.80s", state["input"])
         
         response = llm_with_tools.invoke(messages)
+        
+        content_preview = str(response.content)[:100] if response.content else "(无文本内容)"
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            tool_names = [tc.get("name", "?") for tc in response.tool_calls]
+            logger.info(
+                "LLM 响应 | tool_calls=%d | tools=%s | content_preview=%.80s",
+                len(response.tool_calls), tool_names, content_preview,
+            )
+        else:
+            logger.info(
+                "LLM 响应 | 最终输出 | content_len=%d | preview=%.80s",
+                len(response.content or ""), content_preview,
+            )
         
         return {
             "messages": [response],
@@ -197,8 +212,11 @@ class ReActAgent:
         last_message = messages[-1]
         
         if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            tool_names = [tc.get("name", "?") for tc in last_message.tool_calls]
+            logger.info("继续迭代 | 工具=%s → action", tool_names)
             return "action"
         else:
+            logger.info("迭代结束 → __end__")
             return "__end__"
     
     def _action_node(self, state: AgentState) -> Dict[str, Any]:
@@ -230,7 +248,19 @@ class ReActAgent:
                     "args": tc["args"],
                     "id": tc["id"],
                 })
-                logger.info("工具调用 | name=%s | args=%s", tc["name"], json.dumps(tc["args"], ensure_ascii=False))
+                logger.info(
+                    "工具调用 | name=%s | args=%s",
+                    tc["name"], json.dumps(tc["args"], ensure_ascii=False),
+                )
+
+        if result and "messages" in result:
+            for tm in result["messages"]:
+                if isinstance(tm, ToolMessage):
+                    content_preview = str(tm.content)[:200] if tm.content else "(空)"
+                    logger.info(
+                        "工具结果 | name=%s | content=%.180s",
+                        getattr(tm, "name", "?"), content_preview,
+                    )
         
         return {
             "messages": result["messages"],
@@ -254,6 +284,14 @@ class ReActAgent:
         for msg in messages:
             if isinstance(msg, ToolMessage):
                 new_observations.append(msg.content)
+                logger.info(
+                    "观察记录 | content=%.150s",
+                    str(msg.content)[:150] if msg.content else "(空)",
+                )
+        
+        logger.info("本轮工具结果数=%d | 累计观察数=%d",
+                     sum(1 for m in messages if isinstance(m, ToolMessage)),
+                     len(new_observations))
         
         return {
             "observations": new_observations,
