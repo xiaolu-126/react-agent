@@ -399,7 +399,6 @@ class ReActAgent:
 
         # 去重：如果输出内容重复出现两次完全相同的内容，只保留第一次
         output = self._deduplicate_output(output)
-        output = self._truncate(output)
         
         self.memory_manager.add_ai_message(output, additional_kwargs=last_ai_kwargs)
         logger.info("Agent 处理完成 | output_length=%d | output=%.120s", len(output), output)
@@ -448,17 +447,15 @@ class ReActAgent:
                                         len(full_output) >= 20 and full_output[:len(full_output)//2].strip() == full_output[len(full_output)//2:].strip(),
                                     )
                                     deduped = self._deduplicate_output(full_output) if len(full_output) >= 20 else full_output
-                                    truncated = self._truncate(deduped)
-                                    yield truncated
+                                    yield deduped
         except GraphRecursionError:
             logger.warning("流式 Agent 达到递归限制")
             fallback = self._build_fallback_output(initial_state)
             full_output = fallback
-            yield self._truncate(fallback)
+            yield fallback
 
         if full_output:
             final = self._deduplicate_output(full_output)
-            final = self._truncate(final)
             self.memory_manager.add_ai_message(final)
             if final != full_output:
                 logger.info("流式去重生效 | 原始=%d | 去重后=%d", len(full_output), len(final))
@@ -505,14 +502,6 @@ class ReActAgent:
 
         logger.info("去重未命中 | total_len=%d", n)
         return text
-
-    def _truncate(self, text: str, max_chars: int = 50) -> str:
-        """截断文本到指定字符数以内"""
-        if not text or len(text) <= max_chars:
-            return text
-        truncated = text[:max_chars]
-        logger.info("输出截断 | 原始=%d | 截断后=%d", len(text), len(truncated))
-        return truncated
 
     def _build_fallback_output(self, state: AgentState) -> str:
         """当 Agent 达到递归限制时生成降级回复"""
