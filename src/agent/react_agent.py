@@ -174,8 +174,19 @@ class ReActAgent:
         messages = [SystemMessage(content=self._get_system_prompt())]
         
         if state["messages"]:
-            messages.extend(state["messages"])
-            logger.info("Agent 继续推理 | 历史消息数=%d", len(state["messages"]))
+            # 过滤历史消息：只保留 ToolMessage 和带工具调用的 AIMessage
+            # 避免已生成的最终回答被再次传递给 LLM 导致重复
+            filtered_messages = []
+            for msg in state["messages"]:
+                if isinstance(msg, ToolMessage):
+                    filtered_messages.append(msg)
+                elif isinstance(msg, AIMessage):
+                    # 只保留带工具调用的 AIMessage
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        filtered_messages.append(msg)
+            messages.extend(filtered_messages)
+            logger.info("Agent 继续推理 | 原始消息数=%d | 过滤后=%d", 
+                        len(state["messages"]), len(filtered_messages))
         else:
             messages.append(HumanMessage(content=state["input"]))
             logger.info("Agent 开始推理 | input=%.80s", state["input"])
