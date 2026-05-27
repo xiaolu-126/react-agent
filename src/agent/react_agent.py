@@ -470,7 +470,7 @@ class ReActAgent:
         n = len(text)
 
         # 策略1: 搜索内容标记第二次出现（处理"🎙️ xxx 🎙️ xxx"这类重复）
-        markers = ["🎙️", "主播", "推荐"]
+        markers = ["🎙️", "主播", "推荐", "🎤", "推荐主播", "推荐理由"]
         for marker in markers:
             first_pos = text.find(marker)
             if first_pos >= 0:
@@ -479,16 +479,16 @@ class ReActAgent:
                     candidate = text[:second_pos].strip()
                     after_second = text[second_pos:].strip()
                     first_part = candidate
-                    if after_second.startswith(candidate) or after_second == candidate:
+                    # 检查second_pos之后的内容是否包含candidate（完全重复）
+                    if after_second.startswith(candidate) or after_second == candidate or candidate in after_second:
                         logger.info(
                             "去重策略1（标记重复）生效 | marker=%s | first_len=%d | total=%d",
                             marker, len(first_part), n,
                         )
                         return first_part
 
-        mid = n // 2
-
         # 策略2: 从中心点附近搜索第二个副本的起点
+        mid = n // 2
         prefix_len = min(30, n // 3)
         prefix = text[:prefix_len]
         second_start = text.find(prefix, mid - prefix_len)
