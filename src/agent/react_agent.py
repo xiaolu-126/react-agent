@@ -173,23 +173,30 @@ class ReActAgent:
         
         messages = [SystemMessage(content=self._get_system_prompt())]
         
+        streamer_name = state.get("streamer_name")
+        input_text = state.get("input", "")
+        
+        # 如果有主播名称，构建专门的用户输入消息
+        if streamer_name:
+            user_message_content = f"请为主播「{streamer_name}」生成推荐理由。"
+        else:
+            user_message_content = input_text
+        
         if state["messages"]:
-            # 过滤历史消息：只保留 ToolMessage 和带工具调用的 AIMessage
-            # 避免已生成的最终回答被再次传递给 LLM 导致重复
             filtered_messages = []
             for msg in state["messages"]:
                 if isinstance(msg, ToolMessage):
                     filtered_messages.append(msg)
                 elif isinstance(msg, AIMessage):
-                    # 只保留带工具调用的 AIMessage
                     if hasattr(msg, "tool_calls") and msg.tool_calls:
                         filtered_messages.append(msg)
             messages.extend(filtered_messages)
-            logger.info("Agent 继续推理 | 原始消息数=%d | 过滤后=%d", 
-                        len(state["messages"]), len(filtered_messages))
+            messages.append(HumanMessage(content=user_message_content))
+            logger.info("Agent 继续推理 | 原始消息数=%d | 过滤后=%d | streamer=%s", 
+                        len(state["messages"]), len(filtered_messages), streamer_name or "N/A")
         else:
-            messages.append(HumanMessage(content=state["input"]))
-            logger.info("Agent 开始推理 | input=%.80s", state["input"])
+            messages.append(HumanMessage(content=user_message_content))
+            logger.info("Agent 开始推理 | streamer=%s | input=%.80s", streamer_name or "N/A", input_text)
         
         response = llm_with_tools.invoke(messages)
         
