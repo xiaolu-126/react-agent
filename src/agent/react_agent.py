@@ -469,8 +469,8 @@ class ReActAgent:
             return text
         n = len(text)
 
-        # 策略1: 搜索内容标记第二次出现（处理"🎙️ xxx 🎙️ xxx"这类重复）
-        markers = ["🎙️", "主播", "推荐", "🎤", "推荐主播", "推荐理由"]
+        # 策略1: 搜索内容标记第二次出现（处理重复）
+        markers = ["🎙️", "主播", "推荐", "🎤", "推荐主播", "推荐理由", "岑先生", "Mr.岑"]
         for marker in markers:
             first_pos = text.find(marker)
             if first_pos >= 0:
