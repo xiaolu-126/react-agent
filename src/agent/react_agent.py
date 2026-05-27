@@ -441,24 +441,27 @@ class ReActAgent:
                                     before_len = len(full_output)
                                     full_output += msg.content
                                     logger.info(
-                                        "流式获取到 Agent 输出 | added_len=%d | total=%d | is_dup=%s",
+                                        "流式获取到 Agent 输出 | added_len=%d | total=%d",
                                         len(full_output) - before_len,
                                         len(full_output),
-                                        len(full_output) >= 20 and full_output[:len(full_output)//2].strip() == full_output[len(full_output)//2:].strip(),
                                     )
-                                    deduped = self._deduplicate_output(full_output) if len(full_output) >= 20 else full_output
-                                    yield deduped
+            
+            # 收集完整内容后再去重和 yield
+            if full_output:
+                final = self._deduplicate_output(full_output)
+                logger.info(
+                    "流式处理完成 | 原始=%d | 去重后=%d",
+                    len(full_output),
+                    len(final),
+                )
+                # 一次性 yield 去重后的完整内容
+                yield final
+                self.memory_manager.add_ai_message(final)
         except GraphRecursionError:
             logger.warning("流式 Agent 达到递归限制")
             fallback = self._build_fallback_output(initial_state)
-            full_output = fallback
             yield fallback
-
-        if full_output:
-            final = self._deduplicate_output(full_output)
-            self.memory_manager.add_ai_message(final)
-            if final != full_output:
-                logger.info("流式去重生效 | 原始=%d | 去重后=%d", len(full_output), len(final))
+            self.memory_manager.add_ai_message(fallback)
 
     def _deduplicate_output(self, text: str) -> str:
         """检测并移除完全重复的输出（多策略）"""
