@@ -465,9 +465,27 @@ class ReActAgent:
         if not text or len(text) < 20:
             return text
         n = len(text)
+
+        # 策略1: 搜索内容标记第二次出现（处理"🎙️ xxx 🎙️ xxx"这类重复）
+        markers = ["🎙️", "主播", "推荐"]
+        for marker in markers:
+            first_pos = text.find(marker)
+            if first_pos >= 0:
+                second_pos = text.find(marker, first_pos + 1)
+                if second_pos > first_pos:
+                    candidate = text[:second_pos].strip()
+                    after_second = text[second_pos:].strip()
+                    first_part = candidate
+                    if after_second.startswith(candidate) or after_second == candidate:
+                        logger.info(
+                            "去重策略1（标记重复）生效 | marker=%s | first_len=%d | total=%d",
+                            marker, len(first_part), n,
+                        )
+                        return first_part
+
         mid = n // 2
 
-        # 策略1: 从中心点附近搜索第二个副本的起点
+        # 策略2: 从中心点附近搜索第二个副本的起点
         prefix_len = min(30, n // 3)
         prefix = text[:prefix_len]
         second_start = text.find(prefix, mid - prefix_len)
@@ -476,27 +494,26 @@ class ReActAgent:
             after = text[second_start:]
             if after.startswith(first_part) or after.strip() == first_part.strip():
                 logger.info(
-                    "去重策略1生效 | first_len=%d | pos=%d | total=%d",
+                    "去重策略2（前缀匹配）生效 | first_len=%d | pos=%d | total=%d",
                     len(first_part), second_start, n,
                 )
                 return first_part.rstrip()
 
-        # 策略2: 以中点为中心，正负100字符范围内尝试对齐
-        for offset in range(-100, 101):
-            split = mid + offset
-            if split < n // 3 or split > n * 2 // 3:
-                continue
+        # 策略3: 扫描所有位置，找第一个内容块末尾
+        # 如果文本前半段和后半段高度相似（>80%），则去重
+        quarter = n // 4
+        for split in range(quarter, n - quarter):
             first = text[:split]
             second = text[split:]
-            min_len = min(len(first), len(second))
-            if min_len < 20:
+            if len(first) < 30 or len(second) < 30:
                 continue
-            if first[:min_len].strip() == second[:min_len].strip():
-                trailing = second[min_len:].strip()
-                if not trailing:
+            check_len = min(len(first), len(second))
+            if first[:check_len].strip() == second[:check_len].strip():
+                similarity = sum(1 for a, b in zip(first[:check_len], second[:check_len]) if a == b) / check_len
+                if similarity > 0.8:
                     logger.info(
-                        "去重策略2生效 | first_len=%d | offset=%d | total=%d",
-                        len(first), offset, n,
+                        "去重策略3（相似度检测）生效 | first_len=%d | similarity=%.2f | total=%d",
+                        len(first), similarity, n,
                     )
                     return first.rstrip()
 
