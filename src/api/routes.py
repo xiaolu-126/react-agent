@@ -243,10 +243,12 @@ async def add_model(request: schemas.AddModelRequest):
             max_tokens=request.max_tokens,
         )
 
+        manager.set_current_model(model_key)
+
         return schemas.ModelInfo(
             name=model_key,
             display_name=request.model_name,
-            is_current=False,
+            is_current=True,
         )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
