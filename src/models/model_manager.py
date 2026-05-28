@@ -287,7 +287,7 @@ class ModelManager:
         Raises:
             ValueError: 如果模型类型未配置
         """
-        target_type = model_type or self._current_model
+        target_type = model_type or self._current_model or self._current_custom_model
         if target_type is None:
             raise ValueError("No model is currently set")
         
