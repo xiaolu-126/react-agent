@@ -183,17 +183,10 @@ class ReActAgent:
             user_message_content = input_text
         
         if state["messages"]:
-            filtered_messages = []
-            for msg in state["messages"]:
-                if isinstance(msg, ToolMessage):
-                    filtered_messages.append(msg)
-                elif isinstance(msg, AIMessage):
-                    if hasattr(msg, "tool_calls") and msg.tool_calls:
-                        filtered_messages.append(msg)
-            messages.extend(filtered_messages)
+            messages.extend(state["messages"])
             messages.append(HumanMessage(content=user_message_content))
-            logger.info("Agent 继续推理 | 原始消息数=%d | 过滤后=%d | streamer=%s", 
-                        len(state["messages"]), len(filtered_messages), streamer_name or "N/A")
+            logger.info("Agent 继续推理 | 消息数=%d | streamer=%s", 
+                        len(state["messages"]), streamer_name or "N/A")
         else:
             messages.append(HumanMessage(content=user_message_content))
             logger.info("Agent 开始推理 | streamer=%s | input=%.80s", streamer_name or "N/A", input_text)
