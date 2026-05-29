@@ -112,6 +112,7 @@ class ModelManager:
         self._current_custom_model: Optional[str] = None
         self._config = config or self._load_config_from_env()
         self._initialize_models()
+        self._load_custom_models()
     
     def _load_config_from_env(self) -> ModelManagerConfig:
         """
@@ -181,6 +182,39 @@ class ModelManager:
             self.set_current_model(self._config.default_model)
         except Exception:
             pass
+
+    def _custom_models_path(self) -> Path:
+        """自定义模型配置文件的路径"""
+        return project_root / "config" / "custom_models.json"
+
+    def _load_custom_models(self):
+        """从配置文件加载自定义模型"""
+        path = self._custom_models_path
+        if not path.exists():
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for key, cfg in data.items():
+                self._custom_models[key] = ModelConfig(**cfg)
+            _logger.info("已加载 %d 个自定义模型配置", len(data))
+        except Exception as e:
+            _logger.warning("加载自定义模型配置失败: %s", e)
+
+    def _save_custom_models(self):
+        """将自定义模型配置保存到文件"""
+        path = self._custom_models_path
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                key: cfg.model_dump()
+                for key, cfg in self._custom_models.items()
+            }
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            _logger.info("已保存 %d 个自定义模型配置", len(data))
+        except Exception as e:
+            _logger.warning("保存自定义模型配置失败: %s", e)
     
     def _create_openai_model(self, config: ModelConfig) -> BaseChatModel:
         """
@@ -448,6 +482,7 @@ class ModelManager:
             max_tokens=max_tokens,
         )
         self._custom_models[model_type] = config
+        self._save_custom_models()
         return model_type
     
     def remove_model(self, model_type: str) -> bool:
@@ -469,6 +504,7 @@ class ModelManager:
             del self._custom_models[model_type]
             if model_type in self._custom_chat_models:
                 del self._custom_chat_models[model_type]
+            self._save_custom_models()
             return True
         
         try:
