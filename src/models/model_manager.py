@@ -207,7 +207,7 @@ class ModelManager:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             data = {
-                key: cfg.model_dump()
+                key: cfg.model_dump(mode="json")
                 for key, cfg in self._custom_models.items()
             }
             with open(path, "w", encoding="utf-8") as f:
