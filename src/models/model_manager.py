@@ -216,12 +216,13 @@ class ModelManager:
         except Exception as e:
             _logger.warning("保存自定义模型配置失败: %s", e)
     
-    def _create_openai_model(self, config: ModelConfig) -> BaseChatModel:
+    def _create_openai_model(self, config: ModelConfig, use_responses_api: bool = True) -> BaseChatModel:
         """
         创建 OpenAI 模型
         
         Args:
             config: 模型配置
+            use_responses_api: 是否启用 OpenAI Responses API（非 OpenAI 兼容接口需设为 False）
             
         Returns:
             BaseChatModel: OpenAI 聊天模型实例
@@ -233,6 +234,7 @@ class ModelManager:
             base_url=config.api_base,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
+            use_responses_api=use_responses_api,
         )
     
     def _create_anthropic_model(self, config: ModelConfig) -> BaseChatModel:
@@ -330,7 +332,7 @@ class ModelManager:
                 if target_type not in self._custom_models:
                     raise ValueError(f"Custom model '{target_type}' is not configured")
                 config = self._custom_models[target_type]
-                model = self._create_openai_model(config)
+                model = self._create_openai_model(config, use_responses_api=False)
                 self._custom_chat_models[target_type] = model
             return self._custom_chat_models[target_type]
         
