@@ -189,7 +189,7 @@ class ModelManager:
 
     def _load_custom_models(self):
         """从配置文件加载自定义模型"""
-        path = self._custom_models_path
+        path = self._custom_models_path()
         if not path.exists():
             return
         try:
@@ -203,7 +203,7 @@ class ModelManager:
 
     def _save_custom_models(self):
         """将自定义模型配置保存到文件"""
-        path = self._custom_models_path
+        path = self._custom_models_path()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             data = {
